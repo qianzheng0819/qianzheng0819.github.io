@@ -6,7 +6,7 @@ categories: 学习
 tags:   git
 description: 为了节约记忆成本的git技巧记录
 ---
-### 就以列表形式开始啦~~
+### 就以列表形式开始
 
-* Github page经常更新很慢，所以就需要提交一个空的内容啦～ `git commit -m "zzz" --allow-empty`
+* Github page经常更新很慢，所以就需要提交一个空的内容: `git commit -m "zzz" --allow-empty`
 * 未完，待续....
