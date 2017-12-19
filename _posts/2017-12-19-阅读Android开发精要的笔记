@@ -1,10 +1,10 @@
 ---
 layout: post
-title:  "阅读Android开发精要的笔记"
+title:  "阅读《Android开发精要》的笔记"
 date:   2017-12-19 15:38:00 +0800
 categories: 学习
 tags:   android
-description: 读书笔记
+description: 看着很爽，其实提升有限，还是要从源码了解细节。记录下好的代码模板
 ---
 阅读这本书的本意，是为阅读Android源码而做准备。阅读后发现两者并没有什么关系，这本书是一本工具书啦，有些不错的代码模板记录一下....
 
