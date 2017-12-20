@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "git的小技巧记录"
+title:  "开发备忘"
 date:   2017-12-19 15:10:00 +0800
 categories: 学习
 tags:   git
@@ -9,4 +9,6 @@ description: 为了节约记忆成本的git技巧记录
 ### 就以列表形式开始
 
 * Github page经常更新很慢，所以就需要提交一个空的内容: `git commit -m "zzz" --allow-empty`
+* 切换jdk版本 sudo update-alternatives
+* find .|xargs grep -ri "IBM" -l
 * 未完，待续....
