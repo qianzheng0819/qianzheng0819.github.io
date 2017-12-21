@@ -4,7 +4,7 @@ title:  "Makefile Tutorial"
 date:   2017-12-21 14:10:00 +0800
 categories: 学习
 tags:   makefile
-description: 这个makefile教程太棒了 什么？不会翻墙？那你搞什么编程
+description: 国外的tutorial真的很用心啊,再次告诉我 never never code via baidu!
 ---
 
 A Simple Makefile Tutorial
