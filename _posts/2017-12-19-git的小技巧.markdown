@@ -11,4 +11,6 @@ description: 为了节约记忆成本的git技巧记录
 * Github page经常更新很慢，所以就需要提交一个空的内容: `git commit -m "zzz" --allow-empty`
 * 切换jdk版本 sudo update-alternatives
 * find .|xargs grep -ri "IBM" -l
+* butterknife, lombok
+* gcc hellojni.c -shared -fPIC -o libhellojni.so
 * 未完，待续....
