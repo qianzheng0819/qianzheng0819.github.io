@@ -132,3 +132,9 @@ public class DelegatingVehicleTracker {
 4.If a class is composed of multiple independent thread-safe state variables and has no operations that have any invalid state transitions, then it can delegate thread safety to the underlying state variables.
 
 5.ConcurrentHashMap is a hash-based Map like HashMap, but it uses an entirely different locking strategy that offers better concurrency and scalability.Instead of synchronizing every method on a common lock,restricting access to a single thread at a time,it uses a finer-grained locking mechanism called lock striping to allow a greater degree of shared access.Arbitrarily many reading threads can access the map concurrently, readers can access the map concurrently with writers, and a limited number of writers can modify the map concurrently.The result is far higher throughput under concurrent access, with little performance penalty for single-threaded access.
+
+6.Timer and ScheduledThreadPoolExecutor
+* A Timer creates only a single thread for executing timeer tasks.
+* Another problem with Timer is that it behaves poorly if a TimeTask throws an unchecked exception.The Timer thread doesn't catch the exception,so an unchecked exception thrown from a TimerTask terminates the timer thread.
+* There is little reason to use Timer in Java5.0 or later.
+* If you need to build your own scheduling service,you may still be able to take advantage of the library by using a `DelayQueue`,a `BlockingQueue` implementation that provides the scheduling functionality of ScheduledThreadPoolExecutor.
