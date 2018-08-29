@@ -137,4 +137,4 @@ public class DelegatingVehicleTracker {
 * A Timer creates only a single thread for executing timeer tasks.
 * Another problem with Timer is that it behaves poorly if a TimeTask throws an unchecked exception.The Timer thread doesn't catch the exception,so an unchecked exception thrown from a TimerTask terminates the timer thread.
 * There is little reason to use Timer in Java5.0 or later.
-* If you need to build your own scheduling service,you may still be able to take advantage of the library by using a `DelayQueue`,a `BlockingQueue` implementation that provides the scheduling functionality of ScheduledThreadPoolExecutor.
+* If you you need to build your own scheduling service,you may still be able to take advantage of the library by using a `DelayQueue`,a `BlockingQueue` implementation that provides the scheduling functionality of ScheduledThreadPoolExecutor.
