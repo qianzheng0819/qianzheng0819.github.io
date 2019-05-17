@@ -1,7 +1,7 @@
 # Jekyll configuration
 
 name: 千与
-description: 必先苦其心志，劳其筋苦，饿其体肤...
+description: 吼吼吼...
 
 # url is currently only used only for the RSS feed in feed.xml
 url: #https://github.com/zxixia/jekyll-xixia
@@ -12,13 +12,13 @@ url: #https://github.com/zxixia/jekyll-xixia
 #     run it like so: jekyll serve --baseurl=''
 baseurl: ''
 ## default date_format
-date_format: 
+date_format:
   title: "%B-%-d-%Y"
   archive: "%b"
   categories: "%b-%Y"
   tag: "%b-%Y"
 # Language
-lan: "en" 
+lan: "en"
 
 paginate: 10
 
