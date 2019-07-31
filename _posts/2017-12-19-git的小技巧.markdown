@@ -13,4 +13,5 @@ description: 为了节约记忆成本的git技巧记录
 * find .|xargs grep -ri "IBM" -l
 * butterknife, lombok
 * gcc hellojni.c -shared -fPIC -o libhellojni.so
+* AsyncTask,handlerThread,view刷新机制,string,android hook.
 * 未完，待续....
