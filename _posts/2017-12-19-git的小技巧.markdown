@@ -14,4 +14,7 @@ description: 为了节约记忆成本的git技巧记录
 * butterknife, lombok
 * gcc hellojni.c -shared -fPIC -o libhellojni.so
 * AsyncTask,handlerThread,view刷新机制,string,android hook.
+* git rm --cached $file
+* git checkout --track origin/branch
+* git remote set-url origin $gitPath
 * 未完，待续....
