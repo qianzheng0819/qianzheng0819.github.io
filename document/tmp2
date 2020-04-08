@@ -1,0 +1,10 @@
+failed to handler mux client connection > v2ray.com/core/proxy/vmess/outbound:
+ failed to find an available destination > v2ray.com/core/common/retry:
+ [v2ray.com/core/transport/internet/websocket: failed to dial WebSocket >
+ v2ray.com/core/transport/internet/websocket: failed to dial to (wss://80.251.208.98:26833/ZFfnLKi):
+ > tls: first record does not look like a TLS handshake] > v2ray.com/core/common/retry: all retry attempts failed
+
+
+
+ m/core/transport/internet/websocket: failed to dial WebSocket > v2ray.com/core/transport/internet/websocket: failed to dial to (wss://80.251.208.98:26833/ZFfnLKi):  > tls: first record does not look like a TLS handshake] > v2ray.com/core/common/retry: all retry attempts failed
+2020/03/24 13:12:04 [Warning] [1271636469] v2ray.com/core/app/proxyman/outbound: failed to process outbound traffic > v2ray.com/core/proxy/vmess/outbound: failed to find an available destination > v2ray.com/core/common/retry: [v2ray.com/core/transport/internet/websocket: failed to dial WebSocket > v2ray.com/core/transport/internet/websocket: failed to dial to (wss://80.251.208.98:26833/ZFfnLKi):  > tls: first record does not look like a TLS handshake] > v2ray.com/core/common/retry: all retry attempts failed

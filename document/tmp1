@@ -1,0 +1,6 @@
+
+apt install -y epel-release && apt install -y ufw
+
+ufw disable && ufw allow 26833 && ufw allow http && ufw allow https && ufw enable
+
+scp -P 26833 C:\Users\qianz\.ssh\id_rsa.pub  root@80.251.208.98:~/tmp.pub
