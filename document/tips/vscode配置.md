@@ -6,3 +6,7 @@ https://www.jianshu.com/p/92d60c6c92ef
 
 使用 VSCode 远程访问代码以及远程 GDB 调试
 https://warmgrid.github.io/2019/05/21/remote-debug-in-vscode-insiders.html
+
+root@80.251.208.98 -p 26833
+
+Ga8HvhCuKjeb

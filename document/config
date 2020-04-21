@@ -12,3 +12,5 @@ ENABLE_AIRPLAY_MODE
 AUTH_LICENSE_MODE
 
 egrep -w 'EasyConn|ECSDK|AndroidRuntime' >> b2.txt
+
+egrep -w 'inputBufferIndex' >> b1.txt

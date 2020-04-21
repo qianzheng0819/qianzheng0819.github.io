@@ -1,0 +1,19 @@
+wh180912020040742114
+
+iphone视频解码原接口第一个i帧分成头部和数据包两包。头部61byte,数据包8000byte左右。现在他们改了接口，把头部和数据包合在一起发过来，39k左右，车机解码不出来了。
+
+http://cctvalih5ca.v.myalicdn.com/live/cctv1_2/index.m3u8
+
+/sdcard/logger
+
+adb pull /mnt/sdcard/h264 d:\document\shell\2
+
+a8343f6a74f75621f256b6fac3ecb35e13d0c060  1
+
+4af78b2eabc5e9659a310f5df302d8eb27a0cbcd  0
+
+splitTrack
+
+player_phone_popup_bottom
+
+WifiP2pWfdInfo
