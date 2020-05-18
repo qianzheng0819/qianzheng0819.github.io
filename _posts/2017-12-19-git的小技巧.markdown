@@ -6,17 +6,23 @@ categories: 学习
 tags:   git
 description: 为了节约记忆成本的git技巧记录
 ---
-### 就以列表形式开始
-
+### git相关
 * Github page经常更新很慢，所以就需要提交一个空的内容: `git commit -m "zzz" --allow-empty`
-* 切换jdk版本 sudo update-alternatives
-* find .|xargs grep -ri "IBM" -l
 * gcc hellojni.c -shared -fPIC -o libhellojni.so
 * git rm --cached $file
+* git push origin -d $branch
 * git checkout --track origin/branch 从远程分支拉取代码
 * git remote set-url origin $gitPath 设置远端项目的url
 * git branch -u origin/$path 建立当前分支与远程分支的映射关系
 * git push --set-upstream origin dev_6.3_qian 向远端推分支，且设置映射关系
 * git push -u origin dev_6.3_qian 向远端推分支，且设置映射关系
-* du -hd 1 | sort -hr |head 找出1级目录下大小最大10个文件夹 C:\Users\qianzheng\AppData\Roaming\Tencent\Logs 
-* 未完，待续....
+* git checkout -- . How do I discard unstaged changes in Git?
+
+### adb相关
+* pm path packagename
+* adb shell reboot -p 关机
+
+### 其他
+* du -hd 1 | sort -hr |head 找出1级目录下大小最大10个文件夹         C:\Users\qianzheng\AppData\Roaming\Tencent\Logs
+* 切换jdk版本 sudo update-alternatives
+* find .|xargs grep -ri "IBM" -l
