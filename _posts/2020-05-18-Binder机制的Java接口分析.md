@@ -62,3 +62,107 @@ JavaBBinderHolder这个对象就是在java和c++中切换的一个Holder，holde
 helloService = IHelloService.Stub.asInterface(  
          ServiceManager.getService("hello"));
 {% endhighlight %}
+相当于
+ {%highlight java%}
+ helloService = IHelloService.Stub.asInterface(new BinderProxy()));
+ // BinderProxy的mObject记录了BpBinder(handler),handler就是对应服务的底层句柄
+ {%endhighlight%}
+
+ BinderProxy.transact函数是一个JNI方法，我们在前面已经介绍过了，这里不再累述。最过调用到Binder驱动程序，Binder驱动程序唤醒HelloService这个Server。前面我们在介绍HelloService的启动过程时，曾经提到，HelloService这个Server线程被唤醒之后，就会调用JavaBBinder类的onTransact函数：
+ {%highlight c++%}
+ class JavaBBinder : public BBinder
+ {
+ 	JavaBBinder(JNIEnv* env, jobject object)
+ 		: mVM(jnienv_to_javavm(env)), mObject(env->NewGlobalRef(object))
+ 	{
+ 		......
+ 	}
+
+ 	......
+
+ 	virtual status_t onTransact(
+ 		uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags = 0)
+ 	{
+ 		JNIEnv* env = javavm_to_jnienv(mVM);
+
+ 		......
+
+ 		jboolean res = env->CallBooleanMethod(mObject, gBinderOffsets.mExecTransact,
+ 			code, (int32_t)&data, (int32_t)reply, flags);
+
+ 		......
+
+ 		return res != JNI_FALSE ? NO_ERROR : UNKNOWN_TRANSACTION;
+ 	}
+
+ 	......
+
+         JavaVM* const   mVM;
+ 	jobject const   mObject;
+ };
+ {%endhighlight%}
+ 前面我们在介绍HelloService的启动过程时，曾经介绍过，JavaBBinder类里面的成员变量mObject就是HelloService类的一个实例对象了。因此，这里通过语句：
+ {%highlight c++%}
+ jboolean res = env->CallBooleanMethod(mObject, gBinderOffsets.mExecTransact,
+			code, (int32_t)&data, (int32_t)reply, flags);
+ {%endhighlight%}
+ 就调用了HelloService.execTransact函数，而HelloService.execTransact函数继承了Binder类的execTransact函数：
+{%highlight c++%}
+public class Binder implements IBinder {
+	......
+
+	// Entry point from android_util_Binder.cpp's onTransact
+	private boolean execTransact(int code, int dataObj, int replyObj, int flags) {
+		Parcel data = Parcel.obtain(dataObj);
+		Parcel reply = Parcel.obtain(replyObj);
+		// theoretically, we should call transact, which will call onTransact,
+		// but all that does is rewind it, and we just got these from an IPC,
+		// so we'll just call it directly.
+		boolean res;
+		try {
+			res = onTransact(code, data, reply, flags);
+		} catch (RemoteException e) {
+			reply.writeException(e);
+			res = true;
+		} catch (RuntimeException e) {
+			reply.writeException(e);
+			res = true;
+		} catch (OutOfMemoryError e) {
+			RuntimeException re = new RuntimeException("Out of memory", e);
+			reply.writeException(re);
+			res = true;
+		}
+		reply.recycle();
+		data.recycle();
+		return res;
+	}
+}
+{%endhighlight%}
+这里又调用了onTransact函数来作进一步处理。由于HelloService类继承了IHelloService.Stub类，而IHelloService.Stub类实现了onTransact函数，HelloService类没有实现，因此，最终调用了IHelloService.Stub.onTransact函数：
+{%highlight c++%}
+public interface IHelloService extends android.os.IInterface
+{
+	public static abstract class Stub extends android.os.Binder implements android.os.IHelloService
+	{
+		public boolean onTransact(int code, android.os.Parcel data, android.os.Parcel reply, int flags) throws android.os.RemoteException
+		{
+			switch (code)
+			{
+			......
+			case TRANSACTION_getVal:
+				{
+					data.enforceInterface(DESCRIPTOR);
+					int result = this.getVal();
+					reply.writeNoException();
+					reply.writeInt(result);
+					return true;
+				}
+			}
+			return super.onTransact(code, data, reply, flags);
+		}
+
+		......
+
+	}
+}
+{%endhighlight%}
