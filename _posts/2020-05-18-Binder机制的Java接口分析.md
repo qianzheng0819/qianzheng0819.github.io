@@ -18,7 +18,7 @@ BBinder,binder驱动之间的关系以前已经探讨过，这里不再写。
 记忆。HelloService在SystemServer.java里启动ServerThread启动起来，其他的常见framework
 层java服务如Ams,Wms也是在这里启动起来。
 new HelloService();这个语句会调用HelloService类的构造函数，而HelloService类继承于IHelloService.Stub类，IHelloService.Stub类又继承了Binder类，因此，最后会调用Binder类的构造函数：
-{% highlight java %}
+<!-- {% highlight java %}
 public class Binder implements IBinder {
 ......
 
@@ -165,4 +165,4 @@ public interface IHelloService extends android.os.IInterface
 
 	}
 }
-{%endhighlight%}
+{%endhighlight%} -->
