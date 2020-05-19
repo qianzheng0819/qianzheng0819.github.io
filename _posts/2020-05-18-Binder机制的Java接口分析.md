@@ -58,7 +58,7 @@ static void android_os_Binder_init(JNIEnv* env, jobject clazz)
 JavaBBinderHolder这个对象就是在java和c++中切换的一个Holder，holder构造函数传入了clazz,其中clazz就是我们的关键service。后面通过ibinderForJavaObject操作holder把java端服务binder转换为c++端JavaBBinder
 
  三. Client获取HelloService的Java远程接口的过程
-{% highlight c %}
+{% highlight java %}
 helloService = IHelloService.Stub.asInterface(  
          ServiceManager.getService("hello"));
-{% end highlight %}
+{% endhighlight %}
