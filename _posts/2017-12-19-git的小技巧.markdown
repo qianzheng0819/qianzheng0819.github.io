@@ -23,6 +23,6 @@ description: 为了节约记忆成本的git技巧记录
 * adb shell reboot -p 关机
 
 ### 其他
-* du -hd 1 | sort -hr |head 找出1级目录下大小最大10个文件夹         C:\Users\qianzheng\AppData\Roaming\Tencent\Logs
+* du -hd 1 | sort -hr |head 找出1级目录下大小最大10个文件夹 C:\Users\qianzheng\AppData\Roaming\Tencent\Logs                      
 * 切换jdk版本 sudo update-alternatives
 * find .|xargs grep -ri "IBM" -l
