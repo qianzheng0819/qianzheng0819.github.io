@@ -75,6 +75,9 @@ public final class ActivityThread {
 新进程会和ams ipc通过pid,processName取回对应的服务。然后ams会调用realStartServiceLocked，
 ipc ActivityThread的ApplicationThread服务（ApplicationThread是framework java层的服务，不要被它的名字迷惑^-^）。上述过程有两次ipc。
 
+我的感觉：ams好像一个临时中转站，在这里生产出目标ServiceRecord，然后将它入库封存。新进程要取用ServiceRecord时，通过pid找到进程app，再用app.processName和app.uid找到ServiceRecord。
+期间有主进程向ams的ipc，新进程向ams的ipc，ams向新进程的ipc三次ipc。
+
 最后贴下罗神的总结：
 一. Step 1至Step 7，从主进程调用到ActivityManagerService进程中，完成新进程的创建；
 
