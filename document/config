@@ -3,12 +3,29 @@ ENABLE_APP_ANDROID_USB
 
 ENABLE_WIFI_ANDROID_SERVICE
 
+ENABLE_WIFI_IOS_SERVICE
+
 ENABLE_APP_WIFI_DIRECT
 
 ENABLE_APP_IOS_USB
 
 ENABLE_QT_MODE
 
-ENABLE_WIFI_IOS_SERVICE
-
 ENABLE_AIRPLAY_MODE
+
+ENABLE_NETLINK
+
+_enableNetlink = 1
+
+egrep 'EasyConn|AndroidRuntime|ECSDK'
+
+cat 1.txt | egrep 'EasyConn|AndroidRuntime|ECSDK' > a1.txt
+
+好车机记录：ts03,nv20
+
+git@git.carbit.lo:AndroidEC/libecgl2jni.git
+
+
+chcp 65001
+
+http://jira.carbit.lo:8080/browse/AEC-7021

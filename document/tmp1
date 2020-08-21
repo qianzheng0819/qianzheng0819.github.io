@@ -1,3 +1,15 @@
-4.89/1.37 = 3.56
-4.77/1.31 = 3.64
-3.97/0.72
+海外后装的硬解码入口
+
+VR_WAKEUP_TEXT
+
+SUPPORT_SPEECH_WAKE
+
+mirrorPlay isMirrorConnectionOpen false ,return
+
+音频日志优化，3.3新的需求
+
+adb shell am broadcast -a net.easyconn.drivemode.opened
+
+\\Carbit-fil01\CMMI\23-AE6.x\01开发\02设计\AE6.3.3
+
+adb shell am broadcast -a net.easyconn.start.ec -p net.easyconn --ei ec_app_type 11

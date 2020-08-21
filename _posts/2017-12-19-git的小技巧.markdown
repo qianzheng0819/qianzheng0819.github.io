@@ -13,7 +13,7 @@ description: 为了节约记忆成本的git技巧记录
 * git push origin -d $branch
 * git checkout --track origin/branch 从远程分支拉取代码
 * git remote set-url origin $gitPath 设置远端项目的url
-* git branch -u origin/$path 建立当前分支与远程分支的映射关系
+* git branch -u(--set-upstream-to) origin/$path 建立当前分支与远程分支的映射关系
 * git push --set-upstream origin dev_6.3_qian 向远端推分支，且设置映射关系
 * git push -u origin dev_6.3_qian 向远端推分支，且设置映射关系
 * git checkout -- . How do I discard unstaged changes in Git?
