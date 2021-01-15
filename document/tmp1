@@ -1,9 +1,2 @@
-94ac6fba55d51631cfc32a757e35b3cf68908b30
-
-0b60d230bb2f33608a956fea4e611dd6e852282c
-
-94ac6fba55d51631cfc32a757e35b3cf68908b30
-
-0b60d230bb2f33608a956fea4e611dd6e852282c
-
-8e2e5321bb98b15c411fbff875b5528eb04c5d14
+替换成了okhttp。所以在分析HttpUrlConnection源码的同时，也是在阅读okhttp的源码。分析的方法
+是先画出时序图，然后结合时序图去分析关键方法中的关键代码。
