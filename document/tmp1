@@ -1,15 +1,9 @@
-海外后装的硬解码入口
+94ac6fba55d51631cfc32a757e35b3cf68908b30
 
-VR_WAKEUP_TEXT
+0b60d230bb2f33608a956fea4e611dd6e852282c
 
-SUPPORT_SPEECH_WAKE
+94ac6fba55d51631cfc32a757e35b3cf68908b30
 
-mirrorPlay isMirrorConnectionOpen false ,return
+0b60d230bb2f33608a956fea4e611dd6e852282c
 
-音频日志优化，3.3新的需求
-
-adb shell am broadcast -a net.easyconn.drivemode.opened
-
-\\Carbit-fil01\CMMI\23-AE6.x\01开发\02设计\AE6.3.3
-
-adb shell am broadcast -a net.easyconn.start.ec -p net.easyconn --ei ec_app_type 11
+8e2e5321bb98b15c411fbff875b5528eb04c5d14

@@ -12,7 +12,7 @@ description:
 主进程和ams ipc创建新进程pid和新服务serviceRecord,并分别保存它们在ams服务的集合里。
 
 新进程会加载ActivityThread，然后流程如下：
-{%highlight c%}
+{%highlight java%}
 public final class ActivityThread {
 
 	......
