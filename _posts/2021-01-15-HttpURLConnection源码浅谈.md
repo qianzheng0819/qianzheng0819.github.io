@@ -12,7 +12,6 @@ description:
 替换成了okhttp。所以在分析HttpUrlConnection源码的同时，也是在阅读okhttp的源码。分析的方法   
 是先画出时序图，然后结合时序图去分析关键方法中的关键代码。   
 
----
 {%highlight java%}
 URL url = new URL("https://certs.cac.washington.edu/CAtest/");
 HttpsURLConnection urlConnection = (HttpsURLConnection)url.openConnection();
@@ -25,5 +24,5 @@ InputStream in = urlConnection.getInputStream();
 #### **时序图**
 
 #### **关键方法**
-1.new URL(String spec)
+**1.new URL(String spec)**
 ![p1]({{ site.baseurl }}/assets/images/2021-pic/p1.jpg)
