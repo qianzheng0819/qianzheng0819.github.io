@@ -1,0 +1,42 @@
+scrollview的measureChild应该是unspecified模式，这点可以去它的onMeasure去验证。scrollview
+自身可以match,wrap或精确值。
+
+scrollview的onmeasure方法里只是单独处理了下mFillViewport为true的情况。
+
+scrollview的onmeasure()方法走的是framelayout的onmeasure()方法，调用了measurechildWithMargins,
+scrollview正是重写了该方法。在该方法中对于纵轴测量，直接调用了MeasureSpec.UNSPECIFIED。
+
+computeScroll()方法里，mScroller.computeScrollOffset()里更新了overScroller的mCurrentPosition。
+接着调用overScrollBy()，onOverScrolled来更新View.mScrollY。所以scrollview的scroll就是通过
+不断的修改mScrollY,然后不断的invalidata重绘，来实现scroll的功能。
+
+接下来可以看下view的draw过程是如何利用view.mScrollY属性的。
+
+view的draw方法中有一个标志位dirtyOpaque，如果透明（dirtyOpaque为true）,可以省去一些绘制步骤。
+
+view的draw方法里有canvas.translate(scrollX, scrollY)这段代码，即实现了view的scroll.
+
+接下来看一下draw里做了些什么工作，细致的看一看。
+
+(SurfaceView是View的特殊子类，在View层次结构中提供了一个专用绘图面。目的是在子线程进行绘制，而不用等待onDraw()。
+博客上看到的一句话，子线程绘制，不用等待onDraw().原理可以深挖。)
+
+代码里有background.draw,这里的background是drawable,可以是bitmapDrawable,也可以是ColorDrawable等等。
+ColorDrawable的draw()方法里是canvas.drawColor(mState.mUseColor)，BitmapDrawable的draw()方法里则比较复杂。
+
+接着回到主线background.draw.看源码对于一些好理解的源码可以忽略，没有必要花时间去细看。
+
+常规情况下，第一步drawBackground(),第二步是onDraw(),第三步是dispatchDraw().
+viewGroup一般onDraw操作为空，viewGroup里重写了dispatchDraw()方法。我们接着看dispatchDraw()方法
+里的drawChild()方法。
+
+获得了子视图的动画对象a之后，我们就可以调用它的成员函数getTransformation来继续执行它的动画了.
+
+view的绘制流程源码就看的差不多了，以后可以在实践中再多多的体会。接下来可以看下Canvas相关的知识。
+
+Canvas官网的内容：
+The Canvas class holds the "draw" calls. To draw something, you need 4 basic components: A Bitmap to hold the pixels,
+ a Canvas to host the draw calls (writing into the bitmap), a drawing primitive (e.g. Rect, Path, text, Bitmap),
+ and a paint (to describe the colors and styles for the drawing).
+
+就是每一个Canvas它必须自带一个bitmap来hold住像素。
