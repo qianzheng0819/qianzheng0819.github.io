@@ -31,8 +31,222 @@ InputStream in = urlConnection.getInputStream();
 ![p1]({{ site.baseurl }}/assets/images/2021-pic/p1.jpg)
 
 **2.setupStreamHandler()**
-![p]({{ site.baseurl }}/assets/images/2021-pic/p2.png)
+![p]({{ site.baseurl }}/assets/images/2021-pic/p2.png)  
 可以看到选择的是HttpHandler
 
 **13.initHttpEngine()**
 ![p]({{ site.baseurl }}/assets/images/2021-pic/p3.png)
+
+**14.execute(false)**
+{%highlight java%}
+/**
+ * Sends a request and optionally reads a response. Returns true if the
+ * request was successfully executed, and false if the request can be
+ * retried. Throws an exception if the request failed permanently.
+ */
+private boolean execute(boolean readResponse) throws IOException {
+  try {
+    httpEngine.sendRequest();
+    if (readResponse) {
+      httpEngine.readResponse();
+    }
+
+    return true;
+  } catch (IOException e) {
+    ...
+}
+{%endhighlight%}  
+
+**15.sendRequest()**
+{%highlight java%}
+public final void sendRequest() throws IOException {
+  if (responseSource != null) {
+    return;
+  }
+
+  prepareRawRequestHeaders(); // 加载常用头部，"Keep-Alive"，"gzip"等，加载cookie
+  initResponseSource();
+  OkResponseCache responseCache = client.getOkResponseCache();
+  if (responseCache != null) {
+    responseCache.trackResponse(responseSource);
+  }
+
+  // The raw response source may require the network, but the request
+  // headers may forbid network use. In that case, dispose of the network
+  // response and use a GATEWAY_TIMEOUT response instead, as specified
+  // by http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.9.4.
+  if (requestHeaders.isOnlyIfCached() && responseSource.requiresConnection()) {
+    if (responseSource == ResponseSource.CONDITIONAL_CACHE) {
+      Util.closeQuietly(cachedResponseBody);
+    }
+    this.responseSource = ResponseSource.CACHE;
+    this.cacheResponse = GATEWAY_TIMEOUT_RESPONSE;
+    RawHeaders rawResponseHeaders = RawHeaders.fromMultimap(cacheResponse.getHeaders(), true);
+    setResponse(new ResponseHeaders(uri, rawResponseHeaders), cacheResponse.getBody());
+  }
+
+  if (responseSource.requiresConnection()) {
+    sendSocketRequest();
+  } else if (connection != null) {
+    client.getConnectionPool().recycle(connection);
+    connection = null;
+  }
+}
+{%endhighlight%}    
+prepareRawRequestHeaders(); // 加载常用头部，"Keep-Alive"，"gzip"等，加载cookie  
+
+仔细看下initResponseSource()的源码
+{%highlight java%}
+/**
+ * Initialize the source for this response. It may be corrected later if the
+ * request headers forbids network use.
+ */
+private void initResponseSource() throws IOException {
+  responseSource = ResponseSource.NETWORK; // 设置responseSource为从网络获取
+  if (!policy.getUseCaches()) return; // 禁止使用缓存，return
+
+  OkResponseCache responseCache = client.getOkResponseCache();
+  if (responseCache == null) return;
+
+  CacheResponse candidate = responseCache.get(
+      uri, method, requestHeaders.getHeaders().toMultimap(false));
+  if (candidate == null) return;
+
+  Map<String, List<String>> responseHeadersMap = candidate.getHeaders();
+  cachedResponseBody = candidate.getBody();
+  if (!acceptCacheResponseType(candidate)
+      || responseHeadersMap == null
+      || cachedResponseBody == null) {
+    Util.closeQuietly(cachedResponseBody);
+    return;
+  }
+
+  RawHeaders rawResponseHeaders = RawHeaders.fromMultimap(responseHeadersMap, true);
+  cachedResponseHeaders = new ResponseHeaders(uri, rawResponseHeaders);
+  long now = System.currentTimeMillis();
+  this.responseSource = cachedResponseHeaders.chooseResponseSource(now, requestHeaders);
+  if (responseSource == ResponseSource.CACHE) {
+    this.cacheResponse = candidate;
+    setResponse(cachedResponseHeaders, cachedResponseBody);
+  } else if (responseSource == ResponseSource.CONDITIONAL_CACHE) {
+    this.cacheResponse = candidate;
+  } else if (responseSource == ResponseSource.NETWORK) {
+    Util.closeQuietly(cachedResponseBody);
+  } else {
+    throw new AssertionError();
+  }
+}
+{%endhighlight%}      
+client.getOkResponseCache()源码分析，其中client是okHttpClient
+{%highlight java%}
+public OkResponseCache getOkResponseCache() {
+    if (responseCache instanceof HttpResponseCache) {
+      return ((HttpResponseCache) responseCache).okResponseCache;
+    } else if (responseCache != null) {
+      return new OkResponseCacheAdapter(responseCache);
+    } else {
+      return null;
+    }
+  }
+{%endhighlight%}   
+
+{%highlight java%}
+public final class HttpResponseCache extends ResponseCache implements Closeable {
+
+    private final com.android.okhttp.HttpResponseCache delegate;
+
+    private HttpResponseCache(com.android.okhttp.HttpResponseCache delegate) {
+        this.delegate = delegate;
+    }
+
+    /**
+     * Returns the currently-installed {@code HttpResponseCache}, or null if
+     * there is no cache installed or it is not a {@code HttpResponseCache}.
+     */
+    public static HttpResponseCache getInstalled() {
+        ResponseCache installed = ResponseCache.getDefault();
+        if (installed instanceof com.android.okhttp.HttpResponseCache) {
+            return new HttpResponseCache(
+                    (com.android.okhttp.HttpResponseCache) installed);
+        }
+
+        return null;
+    }
+
+    /**
+     * Creates a new HTTP response cache and {@link ResponseCache#setDefault
+     * sets it} as the system default cache.
+     *
+     * @param directory the directory to hold cache data.
+     * @param maxSize the maximum size of the cache in bytes.
+     * @return the newly-installed cache
+     * @throws IOException if {@code directory} cannot be used for this cache.
+     *     Most applications should respond to this exception by logging a
+     *     warning.
+     */
+    public static HttpResponseCache install(File directory, long maxSize) throws IOException {
+        ResponseCache installed = ResponseCache.getDefault();
+        if (installed instanceof com.android.okhttp.HttpResponseCache) {
+            com.android.okhttp.HttpResponseCache installedCache =
+                    (com.android.okhttp.HttpResponseCache) installed;
+            // don't close and reopen if an equivalent cache is already installed
+            if (installedCache.getDirectory().equals(directory)
+                    && installedCache.getMaxSize() == maxSize
+                    && !installedCache.isClosed()) {
+                return new HttpResponseCache(installedCache);
+            } else {
+                // The HttpResponseCache that owns this object is about to be replaced.
+                installedCache.close();
+            }
+        }
+
+        com.android.okhttp.HttpResponseCache responseCache =
+                new com.android.okhttp.HttpResponseCache(directory, maxSize);
+        ResponseCache.setDefault(responseCache);
+        return new HttpResponseCache(responseCache);
+    }
+{%endhighlight%}   
+这里使用了代理模式，android.net.http.HttpResponseCache对象代理了com.squareup.okhttp.HttpResponseCache
+对象，真正的实现类是由com.squareup.okhttp.HttpResponseCache完成。   
+
+{%highlight java%}
+/**
+   * Although this class only exposes the limited ResponseCache API, it
+   * implements the full OkResponseCache interface. This field is used as a
+   * package private handle to the complete implementation. It delegates to
+   * public and private members of this type.
+   */
+  final OkResponseCache okResponseCache = new OkResponseCache() {
+    @Override public CacheResponse get(URI uri, String requestMethod,
+        Map<String, List<String>> requestHeaders) throws IOException {
+      return HttpResponseCache.this.get(uri, requestMethod, requestHeaders);
+    }
+
+    @Override public CacheRequest put(URI uri, URLConnection connection) throws IOException {
+      return HttpResponseCache.this.put(uri, connection);
+    }
+
+    @Override public void maybeRemove(String requestMethod, URI uri) throws IOException {
+      HttpResponseCache.this.maybeRemove(requestMethod, uri);
+    }
+
+    @Override public void update(
+        CacheResponse conditionalCacheHit, HttpURLConnection connection) throws IOException {
+      HttpResponseCache.this.update(conditionalCacheHit, connection);
+    }
+
+    @Override public void trackConditionalCacheHit() {
+      HttpResponseCache.this.trackConditionalCacheHit();
+    }
+
+    @Override public void trackResponse(ResponseSource source) {
+      HttpResponseCache.this.trackResponse(source);
+    }
+  };
+
+  public HttpResponseCache(File directory, long maxSize) throws IOException { // HttpResponseCache使用硬盘作为缓存介质
+    cache = DiskLruCache.open(directory, VERSION, ENTRY_COUNT, maxSize);
+  }
+{%endhighlight%}   
+可以看出okResponseCache代理了HttpResponseCache.this，也是一个代理模式。所以真正干事的
+还是com.squareup.okhttp.HttpResponseCache
