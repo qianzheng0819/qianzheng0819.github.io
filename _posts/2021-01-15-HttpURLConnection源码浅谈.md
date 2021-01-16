@@ -21,6 +21,7 @@ urlConnection.connect();
 InputStream in = urlConnection.getInputStream();
 {%endhighlight%}
 本文基于android4.4.4源码分析，各个版本代码略有不同。  
+
 ---
 
 ### **时序图**
