@@ -105,19 +105,19 @@ private void initResponseSource() throws IOException {
   responseSource = ResponseSource.NETWORK; // 设置responseSource为从网络获取
   if (!policy.getUseCaches()) return; // 禁止使用缓存，return
 
-  OkResponseCache responseCache = client.getOkResponseCache();
-  if (responseCache == null) return;
+  OkResponseCache responseCache = client.getOkResponseCache(); // 获取本地缓存
+  if (responseCache == null) return; // 缓存为空，则返回
 
   CacheResponse candidate = responseCache.get(
-      uri, method, requestHeaders.getHeaders().toMultimap(false));
+      uri, method, requestHeaders.getHeaders().toMultimap(false)); // 根据uri,method作为key,获取cache候选人
   if (candidate == null) return;
 
-  Map<String, List<String>> responseHeadersMap = candidate.getHeaders();
-  cachedResponseBody = candidate.getBody();
+  Map<String, List<String>> responseHeadersMap = candidate.getHeaders(); // 获取缓存的头部
+  cachedResponseBody = candidate.getBody(); // 获取缓存的身部
   if (!acceptCacheResponseType(candidate)
       || responseHeadersMap == null
       || cachedResponseBody == null) {
-    Util.closeQuietly(cachedResponseBody);
+    Util.closeQuietly(cachedResponseBody); // 关闭cachedResponseBody这个inputStream
     return;
   }
 
@@ -125,12 +125,12 @@ private void initResponseSource() throws IOException {
   cachedResponseHeaders = new ResponseHeaders(uri, rawResponseHeaders);
   long now = System.currentTimeMillis();
   this.responseSource = cachedResponseHeaders.chooseResponseSource(now, requestHeaders);
-  if (responseSource == ResponseSource.CACHE) {
+  if (responseSource == ResponseSource.CACHE) { // 如果是缓存类型，直接setResponse
     this.cacheResponse = candidate;
     setResponse(cachedResponseHeaders, cachedResponseBody);
-  } else if (responseSource == ResponseSource.CONDITIONAL_CACHE) {
+  } else if (responseSource == ResponseSource.CONDITIONAL_CACHE) { //如果是需要验证的缓存类型，则只是记录cacheResponse
     this.cacheResponse = candidate;
-  } else if (responseSource == ResponseSource.NETWORK) {
+  } else if (responseSource == ResponseSource.NETWORK) { // 不支持缓存，关闭cachedResponseBody这个inputStream
     Util.closeQuietly(cachedResponseBody);
   } else {
     throw new AssertionError();
@@ -248,5 +248,5 @@ public final class HttpResponseCache extends ResponseCache implements Closeable 
     cache = DiskLruCache.open(directory, VERSION, ENTRY_COUNT, maxSize);
   }
 {%endhighlight%}   
-可以看出okResponseCache代理了HttpResponseCache.this，也是一个代理模式。所以真正干事的
-还是com.squareup.okhttp.HttpResponseCache
+可以看出okResponseCache代理了HttpResponseCache.this，也是一个代理模式。所以真正干事的还是com.squareup.okhttp.HttpResponseCache.  
+继续看initResponseSource()代码，代码的注释已经讲的很清楚了。基本就是缓存有效，就赋值给HttpEngine的cacheResponse field.
