@@ -1,2 +1,53 @@
-替换成了okhttp。所以在分析HttpUrlConnection源码的同时，也是在阅读okhttp的源码。分析的方法
-是先画出时序图，然后结合时序图去分析关键方法中的关键代码。
+URL: http://msscy.huijiaoyun.com/msscy/user/login?access_token=f3435fbb35be3852abb5d8231e50a2f9
+Method: POST
+Protocol: http/1.1
+Status: Complete
+Response: 200 OK
+SSL: No
+
+Request time: Thu Jan 28 15:47:14 GMT+08:00 2021
+Response time: Thu Jan 28 15:47:15 GMT+08:00 2021
+Duration: 585 ms
+
+Request size: 352 B
+Response size: 8.5 kB
+Total size: 8.8 kB
+
+---------- Request ----------
+
+s: Yjc3MTU1ZDAtOWFiOS00YWM5LTlkMDUtNmM1MTQ0MDkwN2Q3
+platformCodeUser: 420000
+platformCode: 420000
+loginPlatformCode: 888888
+Ty-Authorization: Basic 0ad4f486-427c-4d95-85d7-9df5672e3e55
+Ty-Auth-Platform: 777777
+headCode: jiaxiaobang
+version: 671
+terminalType: 1
+src: 1
+
+{
+  "encrypt": "W31dz0A9jWIjMkN1MLGXal998DLDXdOlSJLgbzaPH0K09+aZ/snxpv1Kz9WADXOb2YZHimhiX1584y0WcpOw/jXeJUr+t6jKPWgdEXmVhC5s99tQruhTH9xCUGvo7Us2pzcHWtMhhjJxT/AgWZTYwhQJH2OPi4Uen3Jua62ExG6TJLpLDOWGXqfX35Oe9zkGfJuPwp8UPP1ZZVw0N0BGRg\u003d\u003d",
+  "platformCode": "420000",
+  "loginPlatformCode": "888888",
+  "src": "1",
+  "version": 671,
+  "terminalType": 1,
+  "headCode": "jiaxiaobang"
+}
+
+---------- Response ----------
+
+Date: Thu, 28 Jan 2021 07:47:16 GMT
+Content-Type: application/json
+Transfer-Encoding: chunked
+Connection: keep-alive
+Vary: Origin
+Vary: Access-Control-Request-Method
+Vary: Access-Control-Request-Headers
+A: B
+xxx: yyy
+
+{
+  "result": "000000",
+  "data": "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
