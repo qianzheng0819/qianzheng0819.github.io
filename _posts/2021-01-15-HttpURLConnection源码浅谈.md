@@ -250,3 +250,81 @@ public final class HttpResponseCache extends ResponseCache implements Closeable 
 {%endhighlight%}   
 可以看出okResponseCache代理了HttpResponseCache.this，也是一个代理模式。所以真正干事的还是com.squareup.okhttp.HttpResponseCache.  
 继续看initResponseSource()代码，代码的注释已经讲的很清楚了。基本就是缓存有效，就赋值给HttpEngine的cacheResponse field.
+
+**18.RouteSelector.next()**
+{%highlight java%}
+public Connection next(String method) throws IOException {
+   // Always prefer pooled connections over new connections.
+   for (Connection pooled; (pooled = pool.get(address)) != null; ) {
+     if (method.equals("GET") || pooled.isReadable()) return pooled;
+     pooled.close();
+   }
+
+   // Compute the next route to attempt.
+   // 这一段代码里比较绕，各种bool值来控制程序流向，具体要仔细看代码，但是没有太大意义。
+   // 具体来说就是实现了多host,多代理的循环尝试方案。在后续的递归next(method)进行递归尝试。
+   if (!hasNextTlsMode()) {
+     if (!hasNextInetSocketAddress()) {
+       if (!hasNextProxy()) {
+         if (!hasNextPostponed()) {
+           throw new NoSuchElementException();
+         }
+         return new Connection(nextPostponed());
+       }
+       lastProxy = nextProxy();
+       resetNextInetSocketAddress(lastProxy);
+     }
+     lastInetSocketAddress = nextInetSocketAddress();
+     resetNextTlsMode();
+   }
+
+   boolean modernTls = nextTlsMode() == TLS_MODE_MODERN;
+   Route route = new Route(address, lastProxy, lastInetSocketAddress, modernTls);
+   if (routeDatabase.shouldPostpone(route)) {
+     postponedRoutes.add(route);
+     // We will only recurse in order to skip previously failed routes. They will be
+     // tried last.
+     return next(method);
+   }
+
+   return new Connection(route);
+ }
+
+{%endhighlight%}
+先看pooled.isReadable()的源码，pooled是Connection实例
+{% highlight java %}
+/**
+   * Returns true if we are confident that we can read data from this
+   * connection. This is more expensive and more accurate than {@link
+   * #isAlive()}; callers should check {@link #isAlive()} first.
+   */
+  public boolean isReadable() {
+    if (!(in instanceof BufferedInputStream)) {
+      return true; // Optimistic.
+    }
+    if (isSpdy()) {
+      return true; // Optimistic. We can't test SPDY because its streams are in use.
+    }
+    BufferedInputStream bufferedInputStream = (BufferedInputStream) in;
+    try {
+      int readTimeout = socket.getSoTimeout();
+      try {
+        socket.setSoTimeout(1);
+        bufferedInputStream.mark(1);
+        if (bufferedInputStream.read() == -1) {
+          return false; // Stream is exhausted; socket is closed.
+        }
+        bufferedInputStream.reset();
+        return true;
+      } finally {
+        socket.setSoTimeout(readTimeout);
+      }
+    } catch (SocketTimeoutException ignored) {
+      return true; // Read timed out; socket is good.
+    } catch (IOException e) {
+      return false; // Couldn't read; socket is closed.
+    }
+  }
+{%endhighlight%}
+isReadable调用bufferedInputStream.mark(1)，然后去读bufferedInputStream,看是否超时来判断connection的in field是否可读。   
+后续的一系列if语句的作用，我在代码的注释里，已经写的很清楚了。
