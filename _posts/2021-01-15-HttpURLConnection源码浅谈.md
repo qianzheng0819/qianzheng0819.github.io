@@ -13,12 +13,28 @@ description:
 是先画出时序图，然后结合时序图去分析关键方法中的关键代码。   
 
 {%highlight java%}
-URL url = new URL("https://certs.cac.washington.edu/CAtest/");
-HttpsURLConnection urlConnection = (HttpsURLConnection)url.openConnection();
-//connect()方法不必显式调用，当调用conn.getInputStream()方法时内部也会自动调用connect方法
-urlConnection.connect();
-//调用getInputStream方法后，服务端才会收到完整的请求，并阻塞式地接收服务端返回的数据
-InputStream in = urlConnection.getInputStream();
+URL url = new URL("http://yoururl.com");
+HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
+conn.setReadTimeout(10000);
+conn.setConnectTimeout(15000);
+conn.setRequestMethod("POST");
+conn.setDoInput(true);
+conn.setDoOutput(true);
+
+List<NameValuePair> params = new ArrayList<NameValuePair>();
+params.add(new BasicNameValuePair("firstParam", paramValue1));
+params.add(new BasicNameValuePair("secondParam", paramValue2));
+params.add(new BasicNameValuePair("thirdParam", paramValue3));
+
+OutputStream os = conn.getOutputStream();
+BufferedWriter writer = new BufferedWriter(
+        new OutputStreamWriter(os, "UTF-8"));
+writer.write(getQuery(params));
+writer.flush();
+writer.close();
+os.close();
+
+conn.connect();
 {%endhighlight%}
 本文基于android4.4.4源码分析，各个版本代码略有不同。  
 
@@ -328,3 +344,183 @@ public Connection next(String method) throws IOException {
 {%endhighlight%}
 isReadable调用bufferedInputStream.mark(1)，然后去读bufferedInputStream,看是否超时来判断connection的in field是否可读。   
 后续的一系列if语句的作用，我在代码的注释里，已经写的很清楚了。
+
+**20.Connection.connect()**
+{%highlight java%}
+public void connect(int connectTimeout, int readTimeout, TunnelRequest tunnelRequest)
+     throws IOException {
+   if (connected) {
+     throw new IllegalStateException("already connected");
+   }
+   connected = true;
+   socket = (route.proxy.type() != Proxy.Type.HTTP) ? new Socket(route.proxy) : new Socket();
+   Platform.get().connectSocket(socket, route.inetSocketAddress, connectTimeout);
+   socket.setSoTimeout(readTimeout);
+   in = socket.getInputStream();
+   out = socket.getOutputStream();
+
+   if (route.address.sslSocketFactory != null) {
+     upgradeToTls(tunnelRequest);
+   }
+
+   // Use MTU-sized buffers to send fewer packets.
+   int mtu = Platform.get().getMtu(socket);
+   if (mtu < 1024) mtu = 1024;
+   if (mtu > 8192) mtu = 8192;
+   in = new BufferedInputStream(in, mtu);
+   out = new BufferedOutputStream(out, mtu);
+ }
+{%endhighlight%}      
+就是简单的网络编程知识了，从socket里获取inputStream和outputStream。
+
+**17.HttpEngine.connect()**
+{% highlight java %}
+protected final void connect() throws IOException {
+   if (connection != null) {
+     return;
+   }
+   if (routeSelector == null) {
+     String uriHost = uri.getHost();
+     if (uriHost == null) {
+       throw new UnknownHostException(uri.toString());
+     }
+     SSLSocketFactory sslSocketFactory = null;
+     HostnameVerifier hostnameVerifier = null;
+     if (uri.getScheme().equalsIgnoreCase("https")) {
+       sslSocketFactory = client.getSslSocketFactory();
+       hostnameVerifier = client.getHostnameVerifier();
+     }
+     Address address = new Address(uriHost, getEffectivePort(uri), sslSocketFactory,
+         hostnameVerifier, client.getAuthenticator(), client.getProxy(), client.getTransports());
+     routeSelector = new RouteSelector(address, uri, client.getProxySelector(),
+         client.getConnectionPool(), Dns.DEFAULT, client.getRoutesDatabase());
+   }
+   connection = routeSelector.next(method);
+   if (!connection.isConnected()) {
+     connection.connect(client.getConnectTimeout(), client.getReadTimeout(), getTunnelConfig());
+     client.getConnectionPool().maybeShare(connection); // connectionPool添加这个连接
+     client.getRoutesDatabase().connected(connection.getRoute()); // failedRoutes.remove(route);
+   } else {
+     connection.updateReadTimeout(client.getReadTimeout());
+   }
+   connected(connection);
+   if (connection.getRoute().getProxy() != client.getProxy()) {
+     // Update the request line if the proxy changed; it may need a host name.
+     requestHeaders.getHeaders().setRequestLine(getRequestLine());
+   }
+ }
+{%endhighlight%}
+自己添加的中文注释和google工程师的英文注释已经很清楚了。我们重点关注下client.getRoutesDatabase().connected(connection.getRoute())   
+其实RouteDatabase这个类的作用很简单，它的作用源码里的介绍已经很清楚了，如下:
+{%highlight java%}
+/**
+ * A blacklist of failed routes to avoid when creating a new connection to a
+ * target address. This is used so that OkHttp can learn from its mistakes: if
+ * there was a failure attempting to connect to a specific IP address, proxy
+ * server or TLS mode, that failure is remembered and alternate routes are
+ * preferred.
+ */
+public final class RouteDatabase {
+  private final Set<Route> failedRoutes = new LinkedHashSet<Route>();
+
+  /** Records a failure connecting to {@code failedRoute}. */
+  public synchronized void failed(Route failedRoute, IOException failure) {
+    failedRoutes.add(failedRoute);
+
+    if (!(failure instanceof SSLHandshakeException)) {
+      // If the problem was not related to SSL then it will also fail with
+      // a different TLS mode therefore we can be proactive about it.
+      failedRoutes.add(failedRoute.flipTlsMode());
+    }
+  }
+
+  /** Records success connecting to {@code failedRoute}. */
+  public synchronized void connected(Route route) {
+    failedRoutes.remove(route);
+  }
+
+  /** Returns true if {@code route} has failed recently and should be avoided. */
+  public synchronized boolean shouldPostpone(Route route) {
+    return failedRoutes.contains(route);
+  }
+
+  public synchronized int failedRoutesCount() {
+    return failedRoutes.size();
+  }
+}
+{%endhighlight%}
+
+**ConnectionPool介绍**
+中间穿插介绍下okhttp的连接缓存池的代码，就看看它的核心recycle方法
+{% highlight java%}
+public void recycle(Connection connection) {
+   if (connection.isSpdy()) { // spdy是http1.2的前身，主要实现了一个socket连接对于多个请求的多路复用
+     return;
+   }
+
+   if (!connection.isAlive()) {
+     Util.closeQuietly(connection);
+     return;
+   }
+
+   try {
+     Platform.get().untagSocket(connection.getSocket()); // 停止对该socket的统计工作
+   } catch (SocketException e) {
+     // When unable to remove tagging, skip recycling and close.
+     Platform.get().logW("Unable to untagSocket(): " + e);
+     Util.closeQuietly(connection);
+     return;
+   }
+
+   synchronized (this) {
+     connections.addFirst(connection); // connections中添加connection
+     connection.resetIdleStartTime(); // 重置闲置时间为当前
+   }
+
+   executorService.submit(connectionsCleanupCallable); // 开启清理任务,清理失效的连接
+ }
+
+ /** We use a single background thread to cleanup expired connections. */
+  private final ExecutorService executorService = new ThreadPoolExecutor(0, 1,
+      60L, TimeUnit.SECONDS, new LinkedBlockingQueue<Runnable>(),
+      Util.daemonThreadFactory("OkHttp ConnectionPool"));
+  private final Callable<Void> connectionsCleanupCallable = new Callable<Void>() {
+    @Override public Void call() throws Exception {
+      List<Connection> expiredConnections = new ArrayList<Connection>(MAX_CONNECTIONS_TO_CLEANUP);
+      int idleConnectionCount = 0;
+      synchronized (ConnectionPool.this) {
+        for (ListIterator<Connection> i = connections.listIterator(connections.size());
+            i.hasPrevious(); ) {
+          Connection connection = i.previous();
+          if (!connection.isAlive() || connection.isExpired(keepAliveDurationNs)) { // connection空闲时间超过5min，则认为连接失效
+            i.remove();
+            expiredConnections.add(connection);
+            if (expiredConnections.size() == MAX_CONNECTIONS_TO_CLEANUP) break;
+          } else if (connection.isIdle()) {
+            idleConnectionCount++;
+          }
+        }
+
+        for (ListIterator<Connection> i = connections.listIterator(connections.size());
+            i.hasPrevious() && idleConnectionCount > maxIdleConnections; ) {
+          Connection connection = i.previous();
+          if (connection.isIdle()) {
+            expiredConnections.add(connection);
+            i.remove();
+            --idleConnectionCount;
+          }
+        }
+      }
+      for (Connection expiredConnection : expiredConnections) {
+        Util.closeQuietly(expiredConnection);
+      }
+      return null;
+    }
+  }
+{%endhighlight%}
+
+**21.createRequestbody**
+这段代码就是给包装了下20步中connection返回的outputStream,并且把请求头部写入了。
+
+**22.OutputStream os = conn.getOutputStream()**
+这一步就是给21步中封装的socket outputStreanm填充数据了。具体怎么填充，可以参考文章开头的例子。
