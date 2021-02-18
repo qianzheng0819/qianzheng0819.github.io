@@ -450,7 +450,7 @@ public final class RouteDatabase {
 }
 {%endhighlight%}
 
-**ConnectionPool介绍**
+**ConnectionPool介绍**    
 中间穿插介绍下okhttp的连接缓存池的代码，就看看它的核心recycle方法
 {% highlight java%}
 public void recycle(Connection connection) {
@@ -519,8 +519,8 @@ public void recycle(Connection connection) {
   }
 {%endhighlight%}
 
-**21.createRequestbody**
+**21.createRequestbody**   
 这段代码就是给包装了下20步中connection返回的outputStream,并且把请求头部写入了。
 
-**22.OutputStream os = conn.getOutputStream()**
+**22.OutputStream os = conn.getOutputStream()**    
 这一步就是给21步中封装的socket outputStreanm填充数据了。具体怎么填充，可以参考文章开头的例子。
