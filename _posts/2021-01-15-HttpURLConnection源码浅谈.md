@@ -41,6 +41,7 @@ conn.connect();
 ---
 
 ### **时序图**
+![p]({{ site.baseurl }}/assets/images/2021-pic/p4.png)  
 
 ### **关键方法**
 **1.new URL(String spec)**
@@ -524,3 +525,84 @@ public void recycle(Connection connection) {
 
 **22.OutputStream os = conn.getOutputStream()**    
 这一步就是给21步中封装的socket outputStreanm填充数据了。具体怎么填充，可以参考文章开头的例子。
+
+**30.HttpTransport.getTransferStream()**   
+{%highlight java%}
+@Override public InputStream getTransferStream(CacheRequest cacheRequest) throws IOException {
+    if (!httpEngine.hasResponseBody()) {
+      return new FixedLengthInputStream(socketIn, cacheRequest, httpEngine, 0);
+    }
+
+    if (httpEngine.responseHeaders.isChunked()) {
+      return new ChunkedInputStream(socketIn, cacheRequest, this);
+    }
+
+    if (httpEngine.responseHeaders.getContentLength() != -1) {
+      return new FixedLengthInputStream(socketIn, cacheRequest, httpEngine,
+          httpEngine.responseHeaders.getContentLength());
+    }
+
+    // Wrap the input stream from the connection (rather than just returning
+    // "socketIn" directly here), so that we can control its use after the
+    // reference escapes.
+    return new UnknownLengthHttpInputStream(socketIn, cacheRequest, httpEngine);
+  }
+{%endhighlight%}
+
+{%highlight java%}
+final class UnknownLengthHttpInputStream extends AbstractHttpInputStream {
+  private boolean inputExhausted;
+
+  UnknownLengthHttpInputStream(InputStream is, CacheRequest cacheRequest, HttpEngine httpEngine)
+      throws IOException {
+    super(is, httpEngine, cacheRequest);
+  }
+
+  @Override public int read(byte[] buffer, int offset, int count) throws IOException {
+    checkOffsetAndCount(buffer.length, offset, count);
+    checkNotClosed();
+    if (in == null || inputExhausted) {
+      return -1;
+    }
+    int read = in.read(buffer, offset, count);
+    if (read == -1) {
+      inputExhausted = true;
+      endOfInput(false);
+      return -1;
+    }
+    cacheWrite(buffer, offset, read);
+    return read;
+  }
+{%endhighlight%}
+
+**可以看到在返回inputStream时，使用了装饰者模式。实际上读取数据只需要socketIn这个inputstream,UnknownLengthHttpInputStream这个包装类的**
+**read方法会调用cacheWrite。即用户在读取response的同时，我们将response的body缓存到了本地文件中。此刻我们就完成了网络请求的本地缓存功能。**
+
+{%highlight java%}
+AbstractHttpInputStream(InputStream in, HttpEngine httpEngine, CacheRequest cacheRequest)
+      throws IOException {
+    this.in = in;
+    this.httpEngine = httpEngine;
+
+    OutputStream cacheBody = cacheRequest != null ? cacheRequest.getBody() : null;
+
+    // some apps return a null body; for compatibility we treat that like a null cache request
+    if (cacheBody == null) {
+      cacheRequest = null;
+    }
+
+    this.cacheBody = cacheBody;
+    this.cacheRequest = cacheRequest;
+  }
+
+  protected final void cacheWrite(byte[] buffer, int offset, int count) throws IOException {
+    if (cacheBody != null) {
+      cacheBody.write(buffer, offset, count);
+    }
+  }
+{%endhighlight%}
+这里的cacheRequest就是第28步返回的CacheRequestImpl实例。
+而第29步的initContentStream就是给responseBodyIn赋值，也就是上述的包装类UnknownLengthHttpInputStream。
+**用户调用conn.getInputStream调用的就是HttpEngine.getResponseBody,即返回responseBodyIn。**
+
+至此，整个httpUrlConnection和其内部的okhttp就分析完成了~
