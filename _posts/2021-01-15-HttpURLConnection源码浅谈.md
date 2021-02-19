@@ -603,6 +603,27 @@ AbstractHttpInputStream(InputStream in, HttpEngine httpEngine, CacheRequest cach
 {%endhighlight%}
 这里的cacheRequest就是第28步返回的CacheRequestImpl实例。
 而第29步的initContentStream就是给responseBodyIn赋值，也就是上述的包装类UnknownLengthHttpInputStream。
-**用户调用conn.getInputStream调用的就是HttpEngine.getResponseBody,即返回responseBodyIn。**
+**用户调用conn.getInputStream调用的就是HttpEngine.getResponseBody,即返回responseBodyIn。**   
+
+**最后关于如何判断缓存有效这个问题，是用url+响应vary头部作为hash key来查找本地的缓存，至于是否有效是靠响应头部的last-modified这个字段。**
+源码如下：  
+{%highlight java%}
+public boolean validate(ResponseHeaders networkResponse) {
+    if (networkResponse.headers.getResponseCode() == HttpURLConnection.HTTP_NOT_MODIFIED) {
+      return true;
+    }
+
+    // The HTTP spec says that if the network's response is older than our
+    // cached response, we may return the cache's response. Like Chrome (but
+    // unlike Firefox), this client prefers to return the newer response.
+    if (lastModified != null
+        && networkResponse.lastModified != null
+        && networkResponse.lastModified.getTime() < lastModified.getTime()) {
+      return true;
+    }
+
+    return false;
+  }
+{%endhighlight%}
 
 至此，整个httpUrlConnection和其内部的okhttp就分析完成了~
