@@ -1,6 +1,14 @@
-4.0.1
-6.1.1
+Environment.getExternalStorageDirectory().getAbsolutePath(); 获取跟目录
+
+getExternalFilesDir 外部私有存储
+
+getFilesDir 内部存储
 
 
-4.1.0
-6.5.1
+28安装没问题，覆盖安装30也没问题。卸载后安装30，会出问题。
+
+现在的问题是如何知道app是否开启了分区存储。Environment.isExternalStorageLegacy() 可以判断
+
+EyuApplication.notExternalStorageLegacy ? EyuApplication.homeFile
+
+EventCache.notExternalStorageLegacy ? EventCache.context.getExternalFilesDir("")

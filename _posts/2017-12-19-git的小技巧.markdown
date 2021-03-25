@@ -17,6 +17,7 @@ description: 为了节约记忆成本的git技巧记录
 * git push --set-upstream origin dev_6.3_qian 向远端推分支，且设置映射关系
 * git push -u origin dev_6.3_qian 向远端推分支，且设置映射关系
 * git checkout -- . How do I discard unstaged changes in Git?
+* git clean -xdf 删除本地未add的文件
 
 ### adb相关
 * pm path packagename
