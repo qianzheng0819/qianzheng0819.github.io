@@ -9,7 +9,7 @@ description: 为了节约记忆成本的git技巧记录
 ### git相关
 * Github page经常更新很慢，所以就需要提交一个空的内容: `git commit -m "zzz" --allow-empty`
 * gcc hellojni.c -shared -fPIC -o libhellojni.so
-* git rm --cached $file
+* git rm --cached $file 清除缓存
 * git push origin -d $branch
 * git checkout --track origin/branch 从远程分支拉取代码
 * git remote set-url origin $gitPath 设置远端项目的url
@@ -17,13 +17,24 @@ description: 为了节约记忆成本的git技巧记录
 * git push --set-upstream origin dev_6.3_qian 向远端推分支，且设置映射关系
 * git push -u origin dev_6.3_qian 向远端推分支，且设置映射关系
 * git checkout -- . How do I discard unstaged changes in Git?
-* git clean -xdf 删除本地未add的文件
+* git clean  删除本地未add的文件
+* git merget $branch --allow-unrelated-histories 解决fatal: refusing to merge unrelated histories
+* git remote add origin https://github.com/guyibang/TEST2.git    
+  git push -u origin master 这样可以给github推我们本地的项目
+* WURQ2CZLCOGDUSXM
 
 ### adb相关
 * pm path packagename
 * adb shell reboot -p 关机
+* adb shell input keyevent 3 桌面
 
 ### 其他
 * du -hd 1 | sort -hr |head 找出1级目录下大小最大10个文件夹 C:\Users\qianzheng\AppData\Roaming\Tencent\Logs                      
 * 切换jdk版本 sudo update-alternatives
 * find .|xargs grep -ri "IBM" -l
+* du -ah --max-depth=1
+  du -sh : 查看当前目录总共占的容量。而不单独列出各子项占用的容量
+  du -lh --max-depth=1 : 查看当前目录下一级子文件和子目录占用的磁盘容量。
+
+### android零散知识
+* android:animateLayoutChanges属性，关于布局动画是针对ViewGroup而言的，意指ViewGroup在增加子View或者删除子View时其子View的过渡动画

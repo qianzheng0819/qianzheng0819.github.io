@@ -1,0 +1,10 @@
+* 查今天是否有课表，课表最后的课节是否超过当前，查询 首页要展示考勤的方法
+
+* 校宣模式会跳出
+
+* 人脸考勤，刷卡考勤添加日志
+<action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.LAUNCHER" />

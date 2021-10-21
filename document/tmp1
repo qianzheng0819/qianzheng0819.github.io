@@ -1,14 +1,6 @@
-Environment.getExternalStorageDirectory().getAbsolutePath(); 获取跟目录
-
-getExternalFilesDir 外部私有存储
-
-getFilesDir 内部存储
+{"sig":"eJxFkF1Pg0AQRf8Lrxid-URMfKANiLFIizZKXwhlF7s1fK9NW*N-d0tafT1nbubOfFuvs5frvG2VyHKdkV5YdxZYVyOW*1b1MstLLXuDEWMMA1zsTvaDamojMCCGMAH4l0rIWqtSjUFqBgAIImINDs2RWyAk1y66xYANZgXh1HHOyUF9mEjkL6ePkypcbUtx4*66ebA5FtUhSNxgK8PUfQ4ERLFN7ARVUVUnnvI93i381QOP3rp44Eka72ZP09Cb*LQJ03jvhHZdiuVGvR-n3v1lmfjMxuNP51EARJDpdJZaVfLEOaEMc-zXMC*K5qvWmT60cvzWzy**nl2*","result":"000000","identifier":"420100313db074a19c11eb9182020315c36477","expireTime":15552000,"initTime":1634526277}
 
 
-28安装没问题，覆盖安装30也没问题。卸载后安装30，会出问题。
+420100c9135d8c9c4b11ebbae5020315f205b1 光谷
 
-现在的问题是如何知道app是否开启了分区存储。Environment.isExternalStorageLegacy() 可以判断
-
-EyuApplication.notExternalStorageLegacy ? EyuApplication.homeFile
-
-EventCache.notExternalStorageLegacy ? EventCache.context.getExternalFilesDir("")
+420100313db074a19c11eb9182020315c36477 水仙仙子

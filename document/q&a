@@ -1,0 +1,13 @@
+#当前思路？
+把私有的so库下载下来，看可以跑通不
+
+
+public void setPowerOnOff(int[] powerOnTime, int[] powerOffTime) {
+   Intent intent = new Intent("android.intent.action.setpoweronoff");
+   intent.putExtra("timeon", powerOnTime);
+   intent.putExtra("timeoff", powerOffTime);
+   intent.putExtra("enable", true);
+   intent.setPackage("com.adtv");
+   this.mContext.sendBroadcast(intent);
+   Log.d("MyManager", "poweron:" + Arrays.toString(powerOnTime) + "/ poweroff:" + Arrays.toString(powerOffTime));
+ }
