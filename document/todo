@@ -1,5 +1,2 @@
-sess->pasv_listen_fd = -1未被赋值
-telnet 192.168.85.130 5188
-
-netstat -nat | grep LISTEN
-发送了retr命令后，然后去telnet pasv的端口,中间只有1分钟的时间
+1.离线的展示？
+2.在线的进入？在线进入还有点麻烦，能拿到userid?拿到ticket？但是平台码，学校id,班级id和卡中用户如何保持一致呢？
