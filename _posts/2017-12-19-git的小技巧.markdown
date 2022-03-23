@@ -21,12 +21,16 @@ description: 为了节约记忆成本的git技巧记录
 * git merget $branch --allow-unrelated-histories 解决fatal: refusing to merge unrelated histories
 * git remote add origin https://github.com/guyibang/TEST2.git    
   git push -u origin master 这样可以给github推我们本地的项目
+* git branch -vv查看映射关系
+* git fetch --prune https://blog.csdn.net/sgs595595/article/details/72480346
 * WURQ2CZLCOGDUSXM
 
 ### adb相关
 * pm path packagename
 * adb shell reboot -p 关机
 * adb shell input keyevent 3 桌面
+* resetprop ro.debuggable 1;resetprop service.adb.root 1;magiskpolicy --live 'allow adbd adbd process setcurrent';magiskpolicy --live 'allow adbd su process dyntransition';magiskpolicy --live 'permissive { su }';kill -9 `ps -A | grep adbd | awk '{print $2}' `
+
 
 ### 其他
 * du -hd 1 | sort -hr |head 找出1级目录下大小最大10个文件夹 C:\Users\qianzheng\AppData\Roaming\Tencent\Logs                      

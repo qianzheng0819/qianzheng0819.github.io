@@ -1,5 +1,0 @@
-listview是怎么做到view复用，防止内存溢出的呢？
-
-listview作为一个viewgroup，是怎么组织和展示它的子view的呢？
-
-FrameLayout的子view都会经过两次onLayout是什么原理呢？
