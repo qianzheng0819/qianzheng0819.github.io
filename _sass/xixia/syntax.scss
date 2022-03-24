@@ -4,7 +4,8 @@
  */
 
 .highlight  { background: #ffffff; }
-.highlight pre { white-space: pre; overflow: auto; }
+.highlight .pre { word-wrap: normal;}
+..highlight .pre .code {white-space: pre;}
 
 .highlight .c { color: #629755; font-style: italic } /* Comment */
 .highlight .err { color: #a61717; background-color: #e3d2d2 } /* Error */
