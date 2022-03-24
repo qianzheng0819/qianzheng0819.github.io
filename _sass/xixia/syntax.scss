@@ -4,7 +4,9 @@
  */
 
 .highlight  { background: #ffffff; }
-.highlight .pre { white-space: pre; overflow: scroll; }
+.highlight .pre { word-wrap: normal; overflow: scroll; }
+.highlight .pre code {white-space: pre;}
+
 .highlight .c { color: #629755; font-style: italic } /* Comment */
 .highlight .err { color: #a61717; background-color: #e3d2d2 } /* Error */
 .highlight .k { font-weight: bold } /* Keyword */
