@@ -33,8 +33,9 @@ $nav-bar-icon-bar: $main-color;
 $nav-bar-brand-color: #fff;
 $nav-bar-brand-hover-color: $link-color-1;
 
+overflow-x: auto;
 
-@import 
+@import
     "xixia/theme",
     "xixia/syntax"
 ;
