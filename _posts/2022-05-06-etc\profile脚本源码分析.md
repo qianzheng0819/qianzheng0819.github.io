@@ -8,7 +8,7 @@ description:
 ---
 
 ### 前言   
-未来一年重点学习音视频的知识。ffmpeg的编译需要非常熟悉脚本，我对脚本不算特别熟悉，正好用ubuntu的/etc/profile来学习积累。     
+未来一年重点学习音视频的知识。ffmpeg的编译需要非常熟悉脚本，正好用ubuntu的/etc/profile来学习积累。     
 /etc/profile文件我们都熟悉，系统login后会调用这个文件，主要是读取系统变量。脚本里还会调用/.bashrc等脚本。
 
 ### 源码   
@@ -139,3 +139,4 @@ if [ -x /usr/lib/command-not-found -o -x /usr/share/command-not-found/command-no
 	}
 fi
 {% endhighlight %}    
+代码里主要是对字符串或者文件的测试操作，比如-z,-n,-e,-x等等。基本上一看就懂了，就不详解了。
