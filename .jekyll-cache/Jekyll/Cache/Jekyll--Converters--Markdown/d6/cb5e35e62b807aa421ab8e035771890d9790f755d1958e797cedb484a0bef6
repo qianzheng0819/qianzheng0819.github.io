@@ -1,0 +1,145 @@
+I"G<h3 id="前言">前言</h3>
+
+<p>Java中的大部分同步类（Lock、Semaphore、ReentrantLock等）都是基于AbstractQueuedSynchronizer（简称为AQS）实现的。AQS是一种提供了原子式管理同步状态、阻塞和唤醒线程功能以及队列模型的简单框架。这篇文章主要通过时序图来逐步分析其源码。</p>
+
+<h3 id="lock时序图">lock时序图</h3>
+
+<p><img src="/assets/images/2022-pic/p5.svg" alt="p" /></p>
+
+<h3 id="lock源码分析">lock源码分析</h3>
+<p><strong>AbstractQueuedSynchronizer.acquire()</strong></p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">public</span> <span class="kd">final</span> <span class="kt">void</span> <span class="nf">acquire</span><span class="o">(</span><span class="kt">int</span> <span class="n">arg</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">if</span> <span class="o">(!</span><span class="n">tryAcquire</span><span class="o">(</span><span class="n">arg</span><span class="o">)</span> <span class="o">&amp;&amp;</span>
+        <span class="n">acquireQueued</span><span class="o">(</span><span class="n">addWaiter</span><span class="o">(</span><span class="nc">Node</span><span class="o">.</span><span class="na">EXCLUSIVE</span><span class="o">),</span> <span class="n">arg</span><span class="o">))</span>
+        <span class="n">selfInterrupt</span><span class="o">();</span>
+<span class="o">}</span></code></pre></figure>
+
+<p><br />
+<code class="language-plaintext highlighter-rouge">tryAcquire</code> fail后才会执行后面的<code class="language-plaintext highlighter-rouge">acquireQueued</code><br />
+<code class="language-plaintext highlighter-rouge">selfInterrupt()</code>点进去源码为<code class="language-plaintext highlighter-rouge">Thread.currentThread().interrupt()</code>，给线程加终端标志一句而已。<br />
+<code class="language-plaintext highlighter-rouge">tryAcquire</code>需要子类来实现，即为ReentrantLock.Sync类</p>
+
+<p><strong>ReentrantLock.Sync.nonfairTryAcquire()</strong></p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">final</span> <span class="kt">boolean</span> <span class="nf">nonfairTryAcquire</span><span class="o">(</span><span class="kt">int</span> <span class="n">acquires</span><span class="o">)</span> <span class="o">{</span>
+    <span class="kd">final</span> <span class="nc">Thread</span> <span class="n">current</span> <span class="o">=</span> <span class="nc">Thread</span><span class="o">.</span><span class="na">currentThread</span><span class="o">();</span>
+    <span class="kt">int</span> <span class="n">c</span> <span class="o">=</span> <span class="n">getState</span><span class="o">();</span>
+    <span class="c1">// sync未被锁，直接获取锁</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">c</span> <span class="o">==</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">compareAndSetState</span><span class="o">(</span><span class="mi">0</span><span class="o">,</span> <span class="n">acquires</span><span class="o">))</span> <span class="o">{</span>
+            <span class="n">setExclusiveOwnerThread</span><span class="o">(</span><span class="n">current</span><span class="o">);</span>
+            <span class="k">return</span> <span class="kc">true</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+    <span class="c1">// 重入锁，计数+1</span>
+    <span class="k">else</span> <span class="nf">if</span> <span class="o">(</span><span class="n">current</span> <span class="o">==</span> <span class="n">getExclusiveOwnerThread</span><span class="o">())</span> <span class="o">{</span>
+        <span class="kt">int</span> <span class="n">nextc</span> <span class="o">=</span> <span class="n">c</span> <span class="o">+</span> <span class="n">acquires</span><span class="o">;</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">nextc</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="o">)</span> <span class="c1">// overflow</span>
+            <span class="k">throw</span> <span class="k">new</span> <span class="nf">Error</span><span class="o">(</span><span class="s">"Maximum lock count exceeded"</span><span class="o">);</span>
+        <span class="n">setState</span><span class="o">(</span><span class="n">nextc</span><span class="o">);</span>
+        <span class="k">return</span> <span class="kc">true</span><span class="o">;</span>
+    <span class="o">}</span>
+    <span class="c1">// 获取锁失败</span>
+    <span class="k">return</span> <span class="kc">false</span><span class="o">;</span>
+<span class="o">}</span></code></pre></figure>
+
+<p><br />
+源码简单，基本不需要讲解。在sync被其他线程占用的情况下，会走<code class="language-plaintext highlighter-rouge">return false</code>,接着看后续的<code class="language-plaintext highlighter-rouge">acquireQueued</code>方法。</p>
+
+<p><strong>AbstractQueuedSynchronizer.acquireQueued()</strong></p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">final</span> <span class="kt">boolean</span> <span class="nf">acquireQueued</span><span class="o">(</span><span class="kd">final</span> <span class="nc">Node</span> <span class="n">node</span><span class="o">,</span> <span class="kt">int</span> <span class="n">arg</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">try</span> <span class="o">{</span>
+        <span class="c1">// 标记是否成功拿到资源</span>
+        <span class="kt">boolean</span> <span class="n">interrupted</span> <span class="o">=</span> <span class="kc">false</span><span class="o">;</span>
+        <span class="c1">// 开始自旋，要么获取锁，要么中断</span>
+        <span class="k">for</span> <span class="o">(;;)</span> <span class="o">{</span>
+            <span class="kd">final</span> <span class="nc">Node</span> <span class="n">p</span> <span class="o">=</span> <span class="n">node</span><span class="o">.</span><span class="na">predecessor</span><span class="o">();</span>
+            <span class="c1">// 如果p是头结点，说明当前节点在真实数据队列的首部，就尝试获取锁（别忘了头结点是虚节点）</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">p</span> <span class="o">==</span> <span class="n">head</span> <span class="o">&amp;&amp;</span> <span class="n">tryAcquire</span><span class="o">(</span><span class="n">arg</span><span class="o">))</span> <span class="o">{</span>
+                <span class="n">setHead</span><span class="o">(</span><span class="n">node</span><span class="o">);</span>
+                <span class="n">p</span><span class="o">.</span><span class="na">next</span> <span class="o">=</span> <span class="kc">null</span><span class="o">;</span> <span class="c1">// help GC</span>
+                <span class="k">return</span> <span class="n">interrupted</span><span class="o">;</span>
+            <span class="o">}</span>
+            <span class="c1">// 说明p为头节点且当前没有获取到锁（可能是非公平锁被抢占了）或者是p不为头结点，</span>
+            <span class="c1">// 这个时候就要判断当前node是否要被阻塞（被阻塞条件：前驱节点的waitStatus为-1），</span>
+            <span class="c1">// 防止无限循环浪费资源。具体两个方法下面细细分析</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">shouldParkAfterFailedAcquire</span><span class="o">(</span><span class="n">p</span><span class="o">,</span> <span class="n">node</span><span class="o">)</span> <span class="o">&amp;&amp;</span>
+                <span class="n">parkAndCheckInterrupt</span><span class="o">())</span>
+                <span class="n">interrupted</span> <span class="o">=</span> <span class="kc">true</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">Throwable</span> <span class="n">t</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">cancelAcquire</span><span class="o">(</span><span class="n">node</span><span class="o">);</span>
+        <span class="k">throw</span> <span class="n">t</span><span class="o">;</span>
+    <span class="o">}</span>
+<span class="o">}</span></code></pre></figure>
+
+<p><br />
+AQS中的队列是CLH变体的虚拟双向队列，CLH锁在上一篇博客中已经有详细的分析。</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="c1">// 靠前驱节点判断当前线程是否应该被阻塞</span>
+<span class="kd">private</span> <span class="kd">static</span> <span class="kt">boolean</span> <span class="nf">shouldParkAfterFailedAcquire</span><span class="o">(</span><span class="nc">Node</span> <span class="n">pred</span><span class="o">,</span> <span class="nc">Node</span> <span class="n">node</span><span class="o">)</span> <span class="o">{</span>
+	<span class="c1">// 获取头结点的节点状态</span>
+	<span class="kt">int</span> <span class="n">ws</span> <span class="o">=</span> <span class="n">pred</span><span class="o">.</span><span class="na">waitStatus</span><span class="o">;</span>
+	<span class="c1">// 说明头结点处于唤醒状态</span>
+	<span class="k">if</span> <span class="o">(</span><span class="n">ws</span> <span class="o">==</span> <span class="nc">Node</span><span class="o">.</span><span class="na">SIGNAL</span><span class="o">)</span>
+		<span class="k">return</span> <span class="kc">true</span><span class="o">;</span>
+	<span class="c1">// 通过枚举值我们知道waitStatus&gt;0是取消状态</span>
+	<span class="k">if</span> <span class="o">(</span><span class="n">ws</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+		<span class="k">do</span> <span class="o">{</span>
+			<span class="c1">// 循环向前查找取消节点，把取消节点从队列中剔除</span>
+			<span class="n">node</span><span class="o">.</span><span class="na">prev</span> <span class="o">=</span> <span class="n">pred</span> <span class="o">=</span> <span class="n">pred</span><span class="o">.</span><span class="na">prev</span><span class="o">;</span>
+		<span class="o">}</span> <span class="k">while</span> <span class="o">(</span><span class="n">pred</span><span class="o">.</span><span class="na">waitStatus</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="o">);</span>
+		<span class="n">pred</span><span class="o">.</span><span class="na">next</span> <span class="o">=</span> <span class="n">node</span><span class="o">;</span>
+	<span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+		<span class="c1">// 设置前任节点等待状态为SIGNAL</span>
+		<span class="n">compareAndSetWaitStatus</span><span class="o">(</span><span class="n">pred</span><span class="o">,</span> <span class="n">ws</span><span class="o">,</span> <span class="nc">Node</span><span class="o">.</span><span class="na">SIGNAL</span><span class="o">);</span>
+	<span class="o">}</span>
+	<span class="k">return</span> <span class="kc">false</span><span class="o">;</span>
+<span class="o">}</span></code></pre></figure>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">private</span> <span class="kt">void</span> <span class="nf">cancelAcquire</span><span class="o">(</span><span class="nc">Node</span> <span class="n">node</span><span class="o">)</span> <span class="o">{</span>
+  <span class="c1">// 将无效节点过滤</span>
+	<span class="k">if</span> <span class="o">(</span><span class="n">node</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span>
+		<span class="k">return</span><span class="o">;</span>
+  <span class="c1">// 设置该节点不关联任何线程，也就是虚节点</span>
+	<span class="n">node</span><span class="o">.</span><span class="na">thread</span> <span class="o">=</span> <span class="kc">null</span><span class="o">;</span>
+	<span class="nc">Node</span> <span class="n">pred</span> <span class="o">=</span> <span class="n">node</span><span class="o">.</span><span class="na">prev</span><span class="o">;</span>
+  <span class="c1">// 通过前驱节点，跳过取消状态的node</span>
+	<span class="k">while</span> <span class="o">(</span><span class="n">pred</span><span class="o">.</span><span class="na">waitStatus</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="o">)</span>
+		<span class="n">node</span><span class="o">.</span><span class="na">prev</span> <span class="o">=</span> <span class="n">pred</span> <span class="o">=</span> <span class="n">pred</span><span class="o">.</span><span class="na">prev</span><span class="o">;</span>
+  <span class="c1">// 获取过滤后的前驱节点的后继节点</span>
+	<span class="nc">Node</span> <span class="n">predNext</span> <span class="o">=</span> <span class="n">pred</span><span class="o">.</span><span class="na">next</span><span class="o">;</span>
+  <span class="c1">// 把当前node的状态设置为CANCELLED</span>
+	<span class="n">node</span><span class="o">.</span><span class="na">waitStatus</span> <span class="o">=</span> <span class="nc">Node</span><span class="o">.</span><span class="na">CANCELLED</span><span class="o">;</span>
+  <span class="c1">// 如果当前节点是尾节点，将从后往前的第一个非取消状态的节点设置为尾节点</span>
+  <span class="c1">// 更新失败的话，则进入else，如果更新成功，将tail的后继节点设置为null</span>
+	<span class="k">if</span> <span class="o">(</span><span class="n">node</span> <span class="o">==</span> <span class="n">tail</span> <span class="o">&amp;&amp;</span> <span class="n">compareAndSetTail</span><span class="o">(</span><span class="n">node</span><span class="o">,</span> <span class="n">pred</span><span class="o">))</span> <span class="o">{</span>
+		<span class="n">compareAndSetNext</span><span class="o">(</span><span class="n">pred</span><span class="o">,</span> <span class="n">predNext</span><span class="o">,</span> <span class="kc">null</span><span class="o">);</span>
+	<span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+		<span class="kt">int</span> <span class="n">ws</span><span class="o">;</span>
+    <span class="c1">// 如果当前节点不是head的后继节点，1:判断当前节点前驱节点的是否为SIGNAL，2:如果不是，则把前驱节点设置为SINGAL看是否成功</span>
+    <span class="c1">// 如果1和2中有一个为true，再判断当前节点的线程是否为null</span>
+    <span class="c1">// 如果上述条件都满足，把当前节点的前驱节点的后继指针指向当前节点的后继节点</span>
+		<span class="k">if</span> <span class="o">(</span><span class="n">pred</span> <span class="o">!=</span> <span class="n">head</span> <span class="o">&amp;&amp;</span> <span class="o">((</span><span class="n">ws</span> <span class="o">=</span> <span class="n">pred</span><span class="o">.</span><span class="na">waitStatus</span><span class="o">)</span> <span class="o">==</span> <span class="nc">Node</span><span class="o">.</span><span class="na">SIGNAL</span> <span class="o">||</span> <span class="o">(</span><span class="n">ws</span> <span class="o">&lt;=</span> <span class="mi">0</span> <span class="o">&amp;&amp;</span> <span class="n">compareAndSetWaitStatus</span><span class="o">(</span><span class="n">pred</span><span class="o">,</span> <span class="n">ws</span><span class="o">,</span> <span class="nc">Node</span><span class="o">.</span><span class="na">SIGNAL</span><span class="o">)))</span> <span class="o">&amp;&amp;</span> <span class="n">pred</span><span class="o">.</span><span class="na">thread</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+			<span class="nc">Node</span> <span class="n">next</span> <span class="o">=</span> <span class="n">node</span><span class="o">.</span><span class="na">next</span><span class="o">;</span>
+			<span class="k">if</span> <span class="o">(</span><span class="n">next</span> <span class="o">!=</span> <span class="kc">null</span> <span class="o">&amp;&amp;</span> <span class="n">next</span><span class="o">.</span><span class="na">waitStatus</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="o">)</span>
+				<span class="n">compareAndSetNext</span><span class="o">(</span><span class="n">pred</span><span class="o">,</span> <span class="n">predNext</span><span class="o">,</span> <span class="n">next</span><span class="o">);</span>
+		<span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+      <span class="c1">// 如果当前节点是head的后继节点，或者上述条件不满足，那就唤醒当前节点的后继节点</span>
+			<span class="n">unparkSuccessor</span><span class="o">(</span><span class="n">node</span><span class="o">);</span>
+		<span class="o">}</span>
+		<span class="n">node</span><span class="o">.</span><span class="na">next</span> <span class="o">=</span> <span class="n">node</span><span class="o">;</span> <span class="c1">// help GC</span>
+	<span class="o">}</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>代码的注释讲解很清楚了。</p>
+
+<p><img src="/assets/images/2022-pic/p3.png" alt="p" /></p>
+
+<p>从上图可以看出，跳出当前循环的条件是当“前置节点是头结点，且当前线程获取锁成功”。为了防止因死循环导致CPU资源被浪费，
+我们会判断前置节点的状态来决定是否要将当前线程挂起，具体挂起流程用流程图表示如下（shouldParkAfterFailedAcquire流程）：</p>
+
+<p><img src="/assets/images/2022-pic/p4.png" alt="p" /></p>
+:ET

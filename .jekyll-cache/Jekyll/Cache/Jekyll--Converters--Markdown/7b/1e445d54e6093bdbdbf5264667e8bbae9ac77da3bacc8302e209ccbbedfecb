@@ -1,0 +1,219 @@
+I"�T<h2 id="clh-lock">CLH lock</h2>
+<p>CLH是一个基于链表（队列）非线程饥饿的自旋（公平）锁，由于是 Craig、Landin 和 Hagersten三人的发明，因此命名为CLH锁。每一个等待锁的线程封装成节点，不断自旋判断前一个节点的状态，如果前一个节点释放锁就结束自旋</p>
+
+<p>特点：该算法只一个CAS操作，即可让所有等待获取锁的线程构建有序全局队列。</p>
+
+<h3 id="原理">原理</h3>
+<hr />
+<p>1、首先有一个尾节点指针，通过这个尾结点指针来构建等待线程的逻辑队列（所有每个线程还应该保存前面Node的状态，链表形式），因此能确保线程线程先到先服务的公平性，因此尾  指针可以说是构建逻辑队列的桥梁；此外这个尾节点指针是原子引用类型，避免了多线程并发操作的线程安全性问题；</p>
+
+<p>2、每个等待锁的线程在自己的前驱节点某个变量上自旋等待，等待前驱解锁之后即可去获取锁。</p>
+
+<h3 id="图解">图解</h3>
+<hr />
+<div align="center">
+<img src="/assets/images/2022-pic/p1.svg" />
+</div>
+
+<div align="center">
+<img src="/assets/images/2022-pic/p2.svg" />
+</div>
+
+<h3 id="原理实现">原理实现</h3>
+<hr />
+<p>1、因为是基于链表，所以每个线程除了保存当前线程的node情况还需保存前一个节点的node情况。</p>
+
+<p>(1)、保存当前线程的node是为了解锁的时候可以直接获取当前节点的node，释放锁</p>
+
+<p>(2)、保存前驱节点的node是为了构建有序列表。</p>
+
+<p>2、因为其它线程哪个先开始不确定且方便当前线程安全的获取上一个线程的node作为前驱节点，所以应该有个变量（称为tail变量）保存每一个某时刻的线程node方便下一时刻获取该node作为前驱节点</p>
+
+<p>(1)、所以还应该有个tail变量，并且每个线程使用的时候要求安全的获取并替换所以这里使用原子引用类型。</p>
+
+<h3 id="代码实现">代码实现</h3>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kn">import</span> <span class="nn">org.junit.Test</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">java.util.concurrent.Executor</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.util.concurrent.Executors</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.util.concurrent.atomic.AtomicInteger</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.util.concurrent.atomic.AtomicReference</span><span class="o">;</span>
+
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">CLHLockExample</span> <span class="o">{</span>
+    <span class="kd">private</span> <span class="kd">static</span> <span class="kd">final</span> <span class="nc">AtomicInteger</span> <span class="n">counter</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">AtomicInteger</span><span class="o">(</span><span class="mi">1</span><span class="o">);</span>
+
+    <span class="kd">private</span> <span class="kd">static</span> <span class="kd">class</span> <span class="nc">QNode</span> <span class="o">{</span>
+        <span class="kd">private</span> <span class="kd">final</span> <span class="kt">int</span> <span class="n">count</span><span class="o">;</span> <span class="c1">// 打印使用，第几个创建的QNode</span>
+        <span class="kd">volatile</span> <span class="kt">boolean</span> <span class="n">locked</span><span class="o">;</span>
+
+        <span class="kd">public</span> <span class="nf">QNode</span><span class="o">()</span> <span class="o">{</span>
+            <span class="n">count</span> <span class="o">=</span> <span class="n">counter</span><span class="o">.</span><span class="na">getAndIncrement</span><span class="o">();</span>
+        <span class="o">}</span>
+
+        <span class="nd">@Override</span>
+        <span class="kd">public</span> <span class="nc">String</span> <span class="nf">toString</span><span class="o">()</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="s">"(QNode_"</span> <span class="o">+</span> <span class="n">count</span> <span class="o">+</span> <span class="s">"_locked:"</span> <span class="o">+</span> <span class="n">locked</span> <span class="o">+</span> <span class="s">")"</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="kd">interface</span> <span class="nc">Lock</span> <span class="o">{</span>
+
+        <span class="kt">void</span> <span class="nf">lock</span><span class="o">();</span>
+
+        <span class="kt">void</span> <span class="nf">unlock</span><span class="o">();</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="kd">static</span> <span class="kd">class</span> <span class="nc">CLHLock</span> <span class="kd">implements</span> <span class="nc">Lock</span> <span class="o">{</span>
+        <span class="cm">/**
+         * 尾巴，所有线程共用的一个变量。每个线程进来后，把自己设置为tail，方便下一时刻线程获取前驱节点
+         */</span>
+        <span class="kd">private</span> <span class="kd">final</span> <span class="nc">AtomicReference</span><span class="o">&lt;</span><span class="nc">QNode</span><span class="o">&gt;</span> <span class="n">tail</span><span class="o">;</span>
+        <span class="cm">/**
+         * 用于线程保存前驱节点，每个线程独有一个。
+         */</span>
+        <span class="kd">private</span> <span class="kd">final</span> <span class="nc">ThreadLocal</span><span class="o">&lt;</span><span class="nc">QNode</span><span class="o">&gt;</span> <span class="n">myPred</span><span class="o">;</span>
+        <span class="cm">/**
+         * 用户线程保存当前节点，每个线程独有一个。
+         */</span>
+        <span class="kd">private</span> <span class="kd">final</span> <span class="nc">ThreadLocal</span><span class="o">&lt;</span><span class="nc">QNode</span><span class="o">&gt;</span> <span class="n">myNode</span><span class="o">;</span>
+
+        <span class="kd">public</span> <span class="nf">CLHLock</span><span class="o">()</span> <span class="o">{</span>
+            <span class="c1">// 给一个初始值，此时既是尾巴也是头，默认false，所以第一个抢占的线程将直接执行，因为前驱是false</span>
+            <span class="k">this</span><span class="o">.</span><span class="na">tail</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">AtomicReference</span><span class="o">&lt;&gt;(</span><span class="k">new</span> <span class="nc">QNode</span><span class="o">());</span>
+            <span class="c1">// get时当前线程没有值则返回一个新的QNode</span>
+            <span class="k">this</span><span class="o">.</span><span class="na">myNode</span> <span class="o">=</span> <span class="nc">ThreadLocal</span><span class="o">.</span><span class="na">withInitial</span><span class="o">(</span><span class="nl">QNode:</span><span class="o">:</span><span class="k">new</span><span class="o">);</span>
+            <span class="c1">// 初始化当前节点保存前驱节点的ThreadLocal</span>
+            <span class="k">this</span><span class="o">.</span><span class="na">myPred</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">ThreadLocal</span><span class="o">&lt;&gt;();</span>
+        <span class="o">}</span>
+
+        <span class="kd">private</span> <span class="kt">void</span> <span class="nf">peekNodeInfo</span><span class="o">(</span><span class="nc">String</span> <span class="n">text</span><span class="o">)</span> <span class="o">{</span>
+            <span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="nc">Thread</span><span class="o">.</span><span class="na">currentThread</span><span class="o">().</span><span class="na">getName</span><span class="o">()</span>
+                    <span class="o">+</span> <span class="s">" "</span> <span class="o">+</span> <span class="n">text</span> <span class="o">+</span> <span class="s">". "</span> <span class="o">+</span>
+                    <span class="s">"myNode"</span> <span class="o">+</span> <span class="n">myNode</span><span class="o">.</span><span class="na">get</span><span class="o">()</span> <span class="o">+</span> <span class="s">", "</span> <span class="o">+</span>
+                    <span class="s">"myPred"</span> <span class="o">+</span> <span class="n">myPred</span><span class="o">.</span><span class="na">get</span><span class="o">());</span>
+
+        <span class="o">}</span>
+
+        <span class="nd">@Override</span>
+        <span class="kd">public</span> <span class="kt">void</span> <span class="nf">lock</span><span class="o">()</span> <span class="o">{</span>
+            <span class="c1">// 获取当前线程的节点</span>
+            <span class="nc">QNode</span> <span class="n">node</span> <span class="o">=</span> <span class="n">myNode</span><span class="o">.</span><span class="na">get</span><span class="o">();</span>
+            <span class="c1">// 将自己的状态设置为true表示获取锁。</span>
+            <span class="n">node</span><span class="o">.</span><span class="na">locked</span> <span class="o">=</span> <span class="kc">true</span><span class="o">;</span>
+            <span class="c1">// 将自己放在队列的尾巴，并且返回以前的节点作为前驱节点。</span>
+            <span class="nc">QNode</span> <span class="n">pred</span> <span class="o">=</span> <span class="n">tail</span><span class="o">.</span><span class="na">getAndSet</span><span class="o">(</span><span class="n">node</span><span class="o">);</span>
+            <span class="c1">// 设置前驱节点</span>
+            <span class="n">myPred</span><span class="o">.</span><span class="na">set</span><span class="o">(</span><span class="n">pred</span><span class="o">);</span>
+            <span class="c1">// 在等待前驱节点的locked域变为false，这是一个自旋等待的过程</span>
+            <span class="k">while</span> <span class="o">(</span><span class="n">pred</span><span class="o">.</span><span class="na">locked</span><span class="o">)</span> <span class="o">{</span>
+            <span class="o">}</span>
+            <span class="n">peekNodeInfo</span><span class="o">(</span><span class="s">"acquire lock success"</span><span class="o">);</span>
+        <span class="o">}</span>
+
+        <span class="nd">@Override</span>
+        <span class="kd">public</span> <span class="kt">void</span> <span class="nf">unlock</span><span class="o">()</span> <span class="o">{</span>
+            <span class="c1">// unlock. 获取自己的node。（这也是为什么用ThreadLocal保存当前线程的原因）把自己的locked设置为false。</span>
+            <span class="nc">QNode</span> <span class="n">node</span> <span class="o">=</span> <span class="n">myNode</span><span class="o">.</span><span class="na">get</span><span class="o">();</span>
+            <span class="n">node</span><span class="o">.</span><span class="na">locked</span> <span class="o">=</span> <span class="kc">false</span><span class="o">;</span>
+            <span class="c1">// 防止死锁。如果没有下一句，若当前线程unlock后迅速竞争到锁，由于当前线程还保存着自己的node,所以`QNode node = this.myNodeThreadLocal.get();`</span>
+            <span class="c1">// 获取的依旧是该线程的node(此时该node还被链表的下一个节点引用)，执行lock后把自己的locked = true然后把自己又加在尾部，</span>
+            <span class="c1">// 然而链表的下一个节点还在等该线程的locked = false而当前节点还在等自己之前的节点locked = false，1-&gt;3-&gt;2 1在等2执行,2在等3执行,3又必须让1先执行完。</span>
+            <span class="c1">// 所以防止上述事情的发生，释放锁时不能允许当前线程还保存自己的node，防止该线程再次抢占线程发生死锁。</span>
+
+            <span class="c1">// 此时处理方式有三种：（问题出在该线程又竞争到锁的时候，也就是该线程连续两次抢到锁）</span>
+            <span class="c1">// (1)、this.myNodeThreadLocal.set(null);</span>
+            <span class="c1">// (2)、this.myNodeThreadLocal.set(new CLHNode());</span>
+            <span class="c1">// (3)、this.myNodeThreadLocal.set(predNodeThreadLocal.get());</span>
+            <span class="c1">// 三种比较，对于1、2中QNode node = this.myNodeThreadLocal.get();本线程都会获取新的node,然而在第二次抢到锁lock()时</span>
+            <span class="c1">// QNode pred = tail.getAndSet(node);this.predNodeThreadLocal.set(pred);会设置新的前驱node导致该线程之前的旧前驱preNode对象没有任何引用，</span>
+            <span class="c1">// 所以当下一次会被GC掉。因此在3中不用重新创建新的CLHNode节点对象，myNodeThreadLocal.set(predNodeThreadLocal.get());这句代码进行优化，</span>
+            <span class="c1">// 提高GC效率和节省内存空间</span>
+            <span class="n">myNode</span><span class="o">.</span><span class="na">set</span><span class="o">(</span><span class="n">myPred</span><span class="o">.</span><span class="na">get</span><span class="o">());</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="kd">static</span> <span class="kd">class</span> <span class="nc">KFC</span> <span class="o">{</span>
+        <span class="kd">private</span> <span class="kd">final</span> <span class="nc">Lock</span> <span class="n">lock</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">CLHLock</span><span class="o">();</span>
+        <span class="kd">private</span> <span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+
+        <span class="kd">public</span> <span class="kt">void</span> <span class="nf">takeout</span><span class="o">()</span> <span class="o">{</span>
+            <span class="k">try</span> <span class="o">{</span>
+                <span class="n">lock</span><span class="o">.</span><span class="na">lock</span><span class="o">();</span>
+                <span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="nc">Thread</span><span class="o">.</span><span class="na">currentThread</span><span class="o">().</span><span class="na">getName</span><span class="o">()</span> <span class="o">+</span> <span class="s">": 拿了第"</span> <span class="o">+</span> <span class="o">++</span><span class="n">i</span> <span class="o">+</span> <span class="s">"份"</span><span class="o">);</span>
+                <span class="k">if</span> <span class="o">(</span><span class="n">i</span> <span class="o">%</span> <span class="mi">5</span> <span class="o">==</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+                    <span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"----------------------------------------------------------------------------------------"</span><span class="o">);</span>
+                <span class="o">}</span>
+                <span class="nc">Thread</span><span class="o">.</span><span class="na">sleep</span><span class="o">(</span><span class="mi">100</span><span class="o">);</span>
+            <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">InterruptedException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">e</span><span class="o">.</span><span class="na">printStackTrace</span><span class="o">();</span>
+            <span class="o">}</span> <span class="k">finally</span> <span class="o">{</span>
+                <span class="n">lock</span><span class="o">.</span><span class="na">unlock</span><span class="o">();</span>
+            <span class="o">}</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Test</span>
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">test</span><span class="o">()</span> <span class="o">{</span>
+        <span class="kd">final</span> <span class="no">KFC</span> <span class="n">kfc</span> <span class="o">=</span> <span class="k">new</span> <span class="no">KFC</span><span class="o">();</span>
+        <span class="nc">Executor</span> <span class="n">executor</span> <span class="o">=</span> <span class="nc">Executors</span><span class="o">.</span><span class="na">newFixedThreadPool</span><span class="o">(</span><span class="mi">5</span><span class="o">);</span>
+        <span class="k">for</span> <span class="o">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">1</span><span class="o">;</span> <span class="n">i</span> <span class="o">&lt;=</span> <span class="mi">30</span><span class="o">;</span> <span class="n">i</span><span class="o">++)</span> <span class="o">{</span>
+            <span class="n">executor</span><span class="o">.</span><span class="na">execute</span><span class="o">(</span><span class="nl">kfc:</span><span class="o">:</span><span class="n">takeout</span><span class="o">);</span>
+        <span class="o">}</span>
+
+        <span class="k">try</span> <span class="o">{</span>
+            <span class="nc">Thread</span><span class="o">.</span><span class="na">sleep</span><span class="o">(</span><span class="mi">4000</span><span class="o">);</span>
+        <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">InterruptedException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">e</span><span class="o">.</span><span class="na">printStackTrace</span><span class="o">();</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+<span class="o">}</span></code></pre></figure>
+
+<h5 id="打印结果">打印结果</h5>
+
+<blockquote>
+  <p>pool-1-thread-2 acquire lock success. myNode(QNode_2_locked:true), myPred(QNode_1_locked:false)<br />
+pool-1-thread-2: 拿了第1份<br />
+pool-1-thread-1 acquire lock success. myNode(QNode_3_locked:true), myPred(QNode_2_locked:false)<br />
+pool-1-thread-1: 拿了第2份<br />
+pool-1-thread-3 acquire lock success. myNode(QNode_4_locked:true), myPred(QNode_3_locked:false)<br />
+pool-1-thread-3: 拿了第3份<br />
+pool-1-thread-4 acquire lock success. myNode(QNode_5_locked:true), myPred(QNode_4_locked:false)<br />
+pool-1-thread-4: 拿了第4份<br />
+pool-1-thread-5 acquire lock success. myNode(QNode_6_locked:true), myPred(QNode_5_locked:false)<br />
+pool-1-thread-5: 拿了第5份 <br />
+pool-1-thread-2 acquire lock success. myNode(QNode_1_locked:true), myPred(QNode_6_locked:false)<br />
+pool-1-thread-2: 拿了第6份<br />
+pool-1-thread-1 acquire lock success. myNode(QNode_2_locked:true), myPred(QNode_1_locked:false)<br />
+pool-1-thread-1: 拿了第7份<br />
+pool-1-thread-3 acquire lock success. myNode(QNode_3_locked:true), myPred(QNode_2_locked:false)<br />
+pool-1-thread-3: 拿了第8份<br />
+pool-1-thread-4 acquire lock success. myNode(QNode_4_locked:true), myPred(QNode_3_locked:false)<br />
+pool-1-thread-4: 拿了第9份<br />
+pool-1-thread-5 acquire lock success. myNode(QNode_5_locked:true), myPred(QNode_4_locked:false)<br />
+pool-1-thread-5: 拿了第10份 <br />
+pool-1-thread-2 acquire lock success. myNode(QNode_6_locked:true), myPred(QNode_5_locked:false)<br />
+pool-1-thread-2: 拿了第11份<br />
+pool-1-thread-1 acquire lock success. myNode(QNode_1_locked:true), myPred(QNode_6_locked:false)<br />
+pool-1-thread-1: 拿了第12份<br />
+pool-1-thread-3 acquire lock success. myNode(QNode_2_locked:true), myPred(QNode_1_locked:false)<br />
+pool-1-thread-3: 拿了第13份<br />
+pool-1-thread-4 acquire lock success. myNode(QNode_3_locked:true), myPred(QNode_2_locked:false)<br />
+pool-1-thread-4: 拿了第14份<br />
+pool-1-thread-5 acquire lock success. myNode(QNode_4_locked:true), myPred(QNode_3_locked:false)<br />
+pool-1-thread-5: 拿了第15份  <br />
+pool-1-thread-2 acquire lock success. myNode(QNode_5_locked:true), myPred(QNode_4_locked:false)<br />
+pool-1-thread-2: 拿了第16份<br />
+pool-1-thread-1 acquire lock success. myNode(QNode_6_locked:true), myPred(QNode_5_locked:false)<br />
+pool-1-thread-1: 拿了第17份<br />
+pool-1-thread-3 acquire lock success. myNode(QNode_1_locked:true), myPred(QNode_6_locked:false)<br />
+pool-1-thread-3: 拿了第18份<br />
+pool-1-thread-4 acquire lock success. myNode(QNode_2_locked:true), myPred(QNode_1_locked:false)<br />
+pool-1-thread-4: 拿了第19份<br />
+pool-1-thread-5 acquire lock success. myNode(QNode_3_locked:true), myPred(QNode_2_locked:false)<br />
+pool-1-thread-5: 拿了第20份  <br />
+…….</p>
+</blockquote>
+
+<p>打印信息也验证了<code class="language-plaintext highlighter-rouge">this.myNodeThreadLocal.set(predNodeThreadLocal.get());</code>可以不用重新创建新的CLHNode节点对象，提高GC效率和节省内存空间</p>
+:ET

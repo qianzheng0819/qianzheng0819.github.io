@@ -1,0 +1,313 @@
+I"�<h3 id="前言"><strong>前言</strong></h3>
+<p>网上有很多Android事件分发的文章了，大多讲解了事件各种情况下的流向。今天我们就从源码层面，来讲下事件分发。先上一个事件分发的经典U型
+图，对于实际开发工作，记住改图就已经足够了。本文源码使用android2.3.7版本，低版本的代码结构简单，方便分析。
+<img src="/assets/images/2021-pic/p5.png" alt="p" /></p>
+
+<h3 id="activitydispatchtouchevent"><strong>Activity.dispatchTouchEvent</strong></h3>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="cm">/**
+     * Called to process touch screen events.  You can override this to
+     * intercept all touch screen events before they are dispatched to the
+     * window.  Be sure to call this implementation for touch screen events
+     * that should be handled normally.
+     *
+     * @param ev The touch screen event.
+     *
+     * @return boolean Return true if this event was consumed.
+     */</span>
+    <span class="kd">public</span> <span class="kt">boolean</span> <span class="nf">dispatchTouchEvent</span><span class="o">(</span><span class="nc">MotionEvent</span> <span class="n">ev</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">ev</span><span class="o">.</span><span class="na">getAction</span><span class="o">()</span> <span class="o">==</span> <span class="nc">MotionEvent</span><span class="o">.</span><span class="na">ACTION_DOWN</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">onUserInteraction</span><span class="o">();</span>
+        <span class="o">}</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">getWindow</span><span class="o">().</span><span class="na">superDispatchTouchEvent</span><span class="o">(</span><span class="n">ev</span><span class="o">))</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="kc">true</span><span class="o">;</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="nf">onTouchEvent</span><span class="o">(</span><span class="n">ev</span><span class="o">);</span>
+    <span class="o">}</span></code></pre></figure>
+
+<p>注释写的很好，翻译一下。被调用于处理屏幕触摸事件。你可以重写该方法来拦截所有触摸事件，在它们被分发到窗口之前。
+再来看源码主要调用了<em>getWindow().superDispatchTouchEvent(ev)</em>
+有阅读过源码的朋友，肯定会清楚android的window的实现类是PhoneWindow啦，所以我们就去看PhoneWindow.superDispatchTouchEvent方法。</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="nd">@Override</span>
+<span class="kd">public</span> <span class="kt">boolean</span> <span class="nf">superDispatchTouchEvent</span><span class="o">(</span><span class="nc">MotionEvent</span> <span class="n">event</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">return</span> <span class="n">mDecor</span><span class="o">.</span><span class="na">superDispatchTouchEvent</span><span class="o">(</span><span class="n">event</span><span class="o">);</span>
+<span class="o">}</span>
+
+<span class="nd">@Override</span>
+<span class="kd">public</span> <span class="kt">boolean</span> <span class="nf">dispatchTouchEvent</span><span class="o">(</span><span class="nc">MotionEvent</span> <span class="n">ev</span><span class="o">)</span> <span class="o">{</span>
+   <span class="kd">final</span> <span class="nc">Callback</span> <span class="n">cb</span> <span class="o">=</span> <span class="n">getCallback</span><span class="o">();</span>
+   <span class="k">return</span> <span class="n">cb</span> <span class="o">!=</span> <span class="kc">null</span> <span class="o">&amp;&amp;</span> <span class="n">mFeatureId</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="o">?</span> <span class="n">cb</span><span class="o">.</span><span class="na">dispatchTouchEvent</span><span class="o">(</span><span class="n">ev</span><span class="o">)</span> <span class="o">:</span> <span class="kd">super</span>
+           <span class="o">.</span><span class="na">dispatchTouchEvent</span><span class="o">(</span><span class="n">ev</span><span class="o">);</span>
+<span class="o">}</span>    </code></pre></figure>
+
+<p>mDecor就是大名鼎鼎的DecorView类了啊，DecorView是PhoneWindow的内部类。可以看到<em>return cb != null &amp;&amp; mFeatureId &lt; 0 ?
+cb.dispatchTouchEvent(ev) : super.dispatchTouchEvent(ev);</em>这段源码。嗯。。。我们就认为这里是走的super.dispatchTouchEvent(ev),
+看源码也不能太在意细节，不然就看不完^_^DecorView的父类是FrameLayout,FrameLayout是没有重写dispatchTouchEvent方法的，所以
+这里就是调用的ViewGroup的dispatchTouchEvent了。</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="k">if</span> <span class="o">(</span><span class="n">action</span> <span class="o">==</span> <span class="nc">MotionEvent</span><span class="o">.</span><span class="na">ACTION_DOWN</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">mMotionTarget</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+                <span class="c1">// this is weird, we got a pen down, but we thought it was</span>
+                <span class="c1">// already down!</span>
+                <span class="c1">// XXX: We should probably send an ACTION_UP to the current</span>
+                <span class="c1">// target.</span>
+                <span class="n">mMotionTarget</span> <span class="o">=</span> <span class="kc">null</span><span class="o">;</span>
+            <span class="o">}</span>
+            <span class="c1">// If we're disallowing intercept or if we're allowing and we didn't</span>
+            <span class="c1">// intercept</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">disallowIntercept</span> <span class="o">||</span> <span class="o">!</span><span class="n">onInterceptTouchEvent</span><span class="o">(</span><span class="n">ev</span><span class="o">))</span> <span class="o">{</span>
+                <span class="c1">// reset this event's action (just to protect ourselves)</span>
+                <span class="n">ev</span><span class="o">.</span><span class="na">setAction</span><span class="o">(</span><span class="nc">MotionEvent</span><span class="o">.</span><span class="na">ACTION_DOWN</span><span class="o">);</span>
+                <span class="c1">// We know we want to dispatch the event down, find a child</span>
+                <span class="c1">// who can handle it, start with the front-most child.</span>
+                <span class="kd">final</span> <span class="kt">int</span> <span class="n">scrolledXInt</span> <span class="o">=</span> <span class="o">(</span><span class="kt">int</span><span class="o">)</span> <span class="n">scrolledXFloat</span><span class="o">;</span>
+                <span class="kd">final</span> <span class="kt">int</span> <span class="n">scrolledYInt</span> <span class="o">=</span> <span class="o">(</span><span class="kt">int</span><span class="o">)</span> <span class="n">scrolledYFloat</span><span class="o">;</span>
+                <span class="kd">final</span> <span class="nc">View</span><span class="o">[]</span> <span class="n">children</span> <span class="o">=</span> <span class="n">mChildren</span><span class="o">;</span>
+                <span class="kd">final</span> <span class="kt">int</span> <span class="n">count</span> <span class="o">=</span> <span class="n">mChildrenCount</span><span class="o">;</span>
+
+                <span class="k">for</span> <span class="o">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="n">count</span> <span class="o">-</span> <span class="mi">1</span><span class="o">;</span> <span class="n">i</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="o">;</span> <span class="n">i</span><span class="o">--)</span> <span class="o">{</span>
+                    <span class="kd">final</span> <span class="nc">View</span> <span class="n">child</span> <span class="o">=</span> <span class="n">children</span><span class="o">[</span><span class="n">i</span><span class="o">];</span>
+                    <span class="k">if</span> <span class="o">((</span><span class="n">child</span><span class="o">.</span><span class="na">mViewFlags</span> <span class="o">&amp;</span> <span class="no">VISIBILITY_MASK</span><span class="o">)</span> <span class="o">==</span> <span class="no">VISIBLE</span>
+                            <span class="o">||</span> <span class="n">child</span><span class="o">.</span><span class="na">getAnimation</span><span class="o">()</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+                        <span class="n">child</span><span class="o">.</span><span class="na">getHitRect</span><span class="o">(</span><span class="n">frame</span><span class="o">);</span>
+                        <span class="k">if</span> <span class="o">(</span><span class="n">frame</span><span class="o">.</span><span class="na">contains</span><span class="o">(</span><span class="n">scrolledXInt</span><span class="o">,</span> <span class="n">scrolledYInt</span><span class="o">))</span> <span class="o">{</span>
+                            <span class="c1">// offset the event to the view's coordinate system</span>
+                            <span class="kd">final</span> <span class="kt">float</span> <span class="n">xc</span> <span class="o">=</span> <span class="n">scrolledXFloat</span> <span class="o">-</span> <span class="n">child</span><span class="o">.</span><span class="na">mLeft</span><span class="o">;</span>
+                            <span class="kd">final</span> <span class="kt">float</span> <span class="n">yc</span> <span class="o">=</span> <span class="n">scrolledYFloat</span> <span class="o">-</span> <span class="n">child</span><span class="o">.</span><span class="na">mTop</span><span class="o">;</span>
+                            <span class="n">ev</span><span class="o">.</span><span class="na">setLocation</span><span class="o">(</span><span class="n">xc</span><span class="o">,</span> <span class="n">yc</span><span class="o">);</span>
+                            <span class="n">child</span><span class="o">.</span><span class="na">mPrivateFlags</span> <span class="o">&amp;=</span> <span class="o">~</span><span class="no">CANCEL_NEXT_UP_EVENT</span><span class="o">;</span>
+                            <span class="k">if</span> <span class="o">(</span><span class="n">child</span><span class="o">.</span><span class="na">dispatchTouchEvent</span><span class="o">(</span><span class="n">ev</span><span class="o">))</span>  <span class="o">{</span>
+                                <span class="c1">// Event handled, we have a target now.</span>
+                                <span class="n">mMotionTarget</span> <span class="o">=</span> <span class="n">child</span><span class="o">;</span>
+                                <span class="k">return</span> <span class="kc">true</span><span class="o">;</span>
+                            <span class="o">}</span>
+                            <span class="c1">// The event didn't get handled, try the next view.</span>
+                            <span class="c1">// Don't reset the event's location, it's not</span>
+                            <span class="c1">// necessary here.</span>
+                        <span class="o">}</span>
+                    <span class="o">}</span>
+                <span class="o">}</span>
+            <span class="o">}</span>
+        <span class="o">}</span></code></pre></figure>
+
+<p>先看屏幕触摸的第一事件ActionDown，mMotionTarget是目标组件。如果viewgroup自身不拦截事件，则从顶端遍历子view,直到hit到对应view。
+并且记录目标view为mMotionTarget。源码很简单，稍微看下就能知道其意图。继续往下面看源码。</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="o">....</span>
+<span class="c1">// The event wasn't an ACTION_DOWN, dispatch it to our target if</span>
+        <span class="c1">// we have one.</span>
+        <span class="c1">// 情况1</span>
+        <span class="kd">final</span> <span class="nc">View</span> <span class="n">target</span> <span class="o">=</span> <span class="n">mMotionTarget</span><span class="o">;</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">target</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="c1">// We don't have a target, this means we're handling the</span>
+            <span class="c1">// event as a regular view.</span>
+            <span class="n">ev</span><span class="o">.</span><span class="na">setLocation</span><span class="o">(</span><span class="n">xf</span><span class="o">,</span> <span class="n">yf</span><span class="o">);</span>
+            <span class="k">if</span> <span class="o">((</span><span class="n">mPrivateFlags</span> <span class="o">&amp;</span> <span class="no">CANCEL_NEXT_UP_EVENT</span><span class="o">)</span> <span class="o">!=</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">ev</span><span class="o">.</span><span class="na">setAction</span><span class="o">(</span><span class="nc">MotionEvent</span><span class="o">.</span><span class="na">ACTION_CANCEL</span><span class="o">);</span>
+                <span class="n">mPrivateFlags</span> <span class="o">&amp;=</span> <span class="o">~</span><span class="no">CANCEL_NEXT_UP_EVENT</span><span class="o">;</span>
+            <span class="o">}</span>
+            <span class="k">return</span> <span class="kd">super</span><span class="o">.</span><span class="na">dispatchTouchEvent</span><span class="o">(</span><span class="n">ev</span><span class="o">);</span>
+        <span class="o">}</span>
+
+        <span class="c1">// if have a target, see if we're allowed to and want to intercept its</span>
+        <span class="c1">// events</span>
+        <span class="c1">// 情况2</span>
+        <span class="k">if</span> <span class="o">(!</span><span class="n">disallowIntercept</span> <span class="o">&amp;&amp;</span> <span class="n">onInterceptTouchEvent</span><span class="o">(</span><span class="n">ev</span><span class="o">))</span> <span class="o">{</span>
+            <span class="kd">final</span> <span class="kt">float</span> <span class="n">xc</span> <span class="o">=</span> <span class="n">scrolledXFloat</span> <span class="o">-</span> <span class="o">(</span><span class="kt">float</span><span class="o">)</span> <span class="n">target</span><span class="o">.</span><span class="na">mLeft</span><span class="o">;</span>
+            <span class="kd">final</span> <span class="kt">float</span> <span class="n">yc</span> <span class="o">=</span> <span class="n">scrolledYFloat</span> <span class="o">-</span> <span class="o">(</span><span class="kt">float</span><span class="o">)</span> <span class="n">target</span><span class="o">.</span><span class="na">mTop</span><span class="o">;</span>
+            <span class="n">mPrivateFlags</span> <span class="o">&amp;=</span> <span class="o">~</span><span class="no">CANCEL_NEXT_UP_EVENT</span><span class="o">;</span>
+            <span class="n">ev</span><span class="o">.</span><span class="na">setAction</span><span class="o">(</span><span class="nc">MotionEvent</span><span class="o">.</span><span class="na">ACTION_CANCEL</span><span class="o">);</span>
+            <span class="n">ev</span><span class="o">.</span><span class="na">setLocation</span><span class="o">(</span><span class="n">xc</span><span class="o">,</span> <span class="n">yc</span><span class="o">);</span>
+            <span class="k">if</span> <span class="o">(!</span><span class="n">target</span><span class="o">.</span><span class="na">dispatchTouchEvent</span><span class="o">(</span><span class="n">ev</span><span class="o">))</span> <span class="o">{</span>
+                <span class="c1">// target didn't handle ACTION_CANCEL. not much we can do</span>
+                <span class="c1">// but they should have.</span>
+            <span class="o">}</span>
+            <span class="c1">// clear the target</span>
+            <span class="n">mMotionTarget</span> <span class="o">=</span> <span class="kc">null</span><span class="o">;</span>
+            <span class="c1">// Don't dispatch this event to our own view, because we already</span>
+            <span class="c1">// saw it when intercepting; we just want to give the following</span>
+            <span class="c1">// event to the normal onTouchEvent().</span>
+            <span class="k">return</span> <span class="kc">true</span><span class="o">;</span>
+        <span class="o">}</span>
+
+        <span class="c1">// finally offset the event to the target's coordinate system and</span>
+        <span class="c1">// dispatch the event.</span>
+        <span class="c1">// 情况3</span>
+        <span class="kd">final</span> <span class="kt">float</span> <span class="n">xc</span> <span class="o">=</span> <span class="n">scrolledXFloat</span> <span class="o">-</span> <span class="o">(</span><span class="kt">float</span><span class="o">)</span> <span class="n">target</span><span class="o">.</span><span class="na">mLeft</span><span class="o">;</span>
+        <span class="kd">final</span> <span class="kt">float</span> <span class="n">yc</span> <span class="o">=</span> <span class="n">scrolledYFloat</span> <span class="o">-</span> <span class="o">(</span><span class="kt">float</span><span class="o">)</span> <span class="n">target</span><span class="o">.</span><span class="na">mTop</span><span class="o">;</span>
+        <span class="n">ev</span><span class="o">.</span><span class="na">setLocation</span><span class="o">(</span><span class="n">xc</span><span class="o">,</span> <span class="n">yc</span><span class="o">);</span>
+
+        <span class="k">if</span> <span class="o">((</span><span class="n">target</span><span class="o">.</span><span class="na">mPrivateFlags</span> <span class="o">&amp;</span> <span class="no">CANCEL_NEXT_UP_EVENT</span><span class="o">)</span> <span class="o">!=</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">ev</span><span class="o">.</span><span class="na">setAction</span><span class="o">(</span><span class="nc">MotionEvent</span><span class="o">.</span><span class="na">ACTION_CANCEL</span><span class="o">);</span>
+            <span class="n">target</span><span class="o">.</span><span class="na">mPrivateFlags</span> <span class="o">&amp;=</span> <span class="o">~</span><span class="no">CANCEL_NEXT_UP_EVENT</span><span class="o">;</span>
+            <span class="n">mMotionTarget</span> <span class="o">=</span> <span class="kc">null</span><span class="o">;</span>
+        <span class="o">}</span>
+
+        <span class="k">return</span> <span class="n">target</span><span class="o">.</span><span class="na">dispatchTouchEvent</span><span class="o">(</span><span class="n">ev</span><span class="o">);</span>
+<span class="o">....</span></code></pre></figure>
+
+<p>上述代码都是非ActionDown事件的处理。情况1是没有目标子控件，那么这个事件就自身消费，调用super.dispatchTouchEvent(ev)，也就是viewGroup
+父类View的dispatchTouchEvent方法。情况2是我们对于该事件类型进行拦截，这个时候给目标子控件发一个ACTION_CANCEL事件，告诉它事件已经
+被viewGroup消费。第三种情况就是向目标子控件传导事件。</p>
+
+<p>我们可以写一个demo测试一下上述的结论。
+先上demo的代码</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="o">&lt;?</span><span class="n">xml</span> <span class="n">version</span><span class="o">=</span><span class="s">"1.0"</span> <span class="n">encoding</span><span class="o">=</span><span class="s">"utf-8"</span><span class="o">?&gt;</span>
+<span class="o">&lt;</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span><span class="o">.</span><span class="na">viewgroup</span><span class="o">.</span><span class="na">MyFrameLayout</span> <span class="nl">xmlns:</span><span class="n">android</span><span class="o">=</span><span class="s">"http://schemas.android.com/apk/res/android"</span>
+    <span class="nl">android:</span><span class="n">id</span><span class="o">=</span><span class="s">"@+id/parent"</span>
+    <span class="nl">android:</span><span class="n">layout_width</span><span class="o">=</span><span class="s">"match_parent"</span>
+    <span class="nl">android:</span><span class="n">layout_height</span><span class="o">=</span><span class="s">"match_parent"</span><span class="o">&gt;</span>
+
+    <span class="o">&lt;</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span><span class="o">.</span><span class="na">viewgroup</span><span class="o">.</span><span class="na">MyTextView</span>
+        <span class="nl">android:</span><span class="n">id</span><span class="o">=</span><span class="s">"@+id/tv"</span>
+        <span class="nl">android:</span><span class="n">layout_width</span><span class="o">=</span><span class="s">"match_parent"</span>
+        <span class="nl">android:</span><span class="n">layout_height</span><span class="o">=</span><span class="s">"200dp"</span>
+        <span class="nl">android:</span><span class="n">layout_gravity</span><span class="o">=</span><span class="s">"center"</span>
+        <span class="nl">android:</span><span class="n">gravity</span><span class="o">=</span><span class="s">"center"</span>
+        <span class="nl">android:</span><span class="n">onClick</span><span class="o">=</span><span class="s">"jump"</span>
+        <span class="nl">android:</span><span class="n">text</span><span class="o">=</span><span class="s">"hey kick me!"</span>
+        <span class="nl">android:</span><span class="n">textSize</span><span class="o">=</span><span class="s">"40sp"</span> <span class="o">/&gt;</span>
+
+<span class="o">&lt;/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span><span class="o">.</span><span class="na">viewgroup</span><span class="o">.</span><span class="na">MyFrameLayout</span><span class="o">&gt;</span>
+
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">MyFrameLayout</span> <span class="kd">extends</span> <span class="nc">FrameLayout</span> <span class="o">{</span>
+    <span class="kd">public</span> <span class="nf">MyFrameLayout</span><span class="o">(</span><span class="nd">@NonNull</span> <span class="nc">Context</span> <span class="n">context</span><span class="o">)</span> <span class="o">{</span>
+        <span class="kd">super</span><span class="o">(</span><span class="n">context</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="nf">MyFrameLayout</span><span class="o">(</span><span class="nd">@NonNull</span> <span class="nc">Context</span> <span class="n">context</span><span class="o">,</span> <span class="nd">@Nullable</span> <span class="nc">AttributeSet</span> <span class="n">attrs</span><span class="o">)</span> <span class="o">{</span>
+        <span class="kd">super</span><span class="o">(</span><span class="n">context</span><span class="o">,</span> <span class="n">attrs</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="nf">MyFrameLayout</span><span class="o">(</span><span class="nd">@NonNull</span> <span class="nc">Context</span> <span class="n">context</span><span class="o">,</span> <span class="nd">@Nullable</span> <span class="nc">AttributeSet</span> <span class="n">attrs</span><span class="o">,</span> <span class="kt">int</span> <span class="n">defStyleAttr</span><span class="o">)</span> <span class="o">{</span>
+        <span class="kd">super</span><span class="o">(</span><span class="n">context</span><span class="o">,</span> <span class="n">attrs</span><span class="o">,</span> <span class="n">defStyleAttr</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Override</span>
+    <span class="kd">public</span> <span class="kt">boolean</span> <span class="nf">onInterceptTouchEvent</span><span class="o">(</span><span class="nc">MotionEvent</span> <span class="n">ev</span><span class="o">)</span> <span class="o">{</span>
+        <span class="nc">Mlog</span><span class="o">.</span><span class="na">log</span><span class="o">(</span><span class="s">"onInterceptTouchEvent "</span> <span class="o">+</span> <span class="n">ev</span><span class="o">.</span><span class="na">getAction</span><span class="o">());</span>
+        <span class="k">return</span> <span class="kd">super</span><span class="o">.</span><span class="na">onInterceptTouchEvent</span><span class="o">(</span><span class="n">ev</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Override</span>
+    <span class="kd">public</span> <span class="kt">boolean</span> <span class="nf">onTouchEvent</span><span class="o">(</span><span class="nc">MotionEvent</span> <span class="n">event</span><span class="o">)</span> <span class="o">{</span>
+        <span class="nc">Mlog</span><span class="o">.</span><span class="na">log</span><span class="o">(</span><span class="s">"fl onTouchEvent action "</span> <span class="o">+</span> <span class="n">event</span><span class="o">.</span><span class="na">getAction</span><span class="o">());</span>
+        <span class="k">return</span> <span class="kc">true</span><span class="o">;</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">MyTextView</span> <span class="kd">extends</span> <span class="n">android</span><span class="o">.</span><span class="na">support</span><span class="o">.</span><span class="na">v7</span><span class="o">.</span><span class="na">widget</span><span class="o">.</span><span class="na">AppCompatTextView</span> <span class="o">{</span>
+    <span class="kd">public</span> <span class="nf">MyTextView</span><span class="o">(</span><span class="nc">Context</span> <span class="n">context</span><span class="o">)</span> <span class="o">{</span>
+        <span class="kd">super</span><span class="o">(</span><span class="n">context</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="nf">MyTextView</span><span class="o">(</span><span class="nc">Context</span> <span class="n">context</span><span class="o">,</span> <span class="nd">@Nullable</span> <span class="nc">AttributeSet</span> <span class="n">attrs</span><span class="o">)</span> <span class="o">{</span>
+        <span class="kd">super</span><span class="o">(</span><span class="n">context</span><span class="o">,</span> <span class="n">attrs</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="nf">MyTextView</span><span class="o">(</span><span class="nc">Context</span> <span class="n">context</span><span class="o">,</span> <span class="nd">@Nullable</span> <span class="nc">AttributeSet</span> <span class="n">attrs</span><span class="o">,</span> <span class="kt">int</span> <span class="n">defStyleAttr</span><span class="o">)</span> <span class="o">{</span>
+        <span class="kd">super</span><span class="o">(</span><span class="n">context</span><span class="o">,</span> <span class="n">attrs</span><span class="o">,</span> <span class="n">defStyleAttr</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Override</span>
+    <span class="kd">public</span> <span class="kt">boolean</span> <span class="nf">onTouchEvent</span><span class="o">(</span><span class="nc">MotionEvent</span> <span class="n">event</span><span class="o">)</span> <span class="o">{</span>
+        <span class="kt">boolean</span> <span class="n">b</span> <span class="o">=</span> <span class="kd">super</span><span class="o">.</span><span class="na">onTouchEvent</span><span class="o">(</span><span class="n">event</span><span class="o">);</span>
+        <span class="k">return</span> <span class="n">b</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Override</span>
+    <span class="kd">public</span> <span class="kt">boolean</span> <span class="nf">dispatchTouchEvent</span><span class="o">(</span><span class="nc">MotionEvent</span> <span class="n">event</span><span class="o">)</span> <span class="o">{</span>
+        <span class="nc">Mlog</span><span class="o">.</span><span class="na">log</span><span class="o">(</span><span class="s">"tv dispatchTouchEvent action "</span> <span class="o">+</span> <span class="n">event</span><span class="o">.</span><span class="na">getAction</span><span class="o">());</span>
+        <span class="k">return</span> <span class="kd">super</span><span class="o">.</span><span class="na">dispatchTouchEvent</span><span class="o">(</span><span class="n">event</span><span class="o">);</span>
+    <span class="o">}</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>先复现第一种情况，触摸textView以外的区域。看日志：</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">36</span><span class="o">:</span><span class="mf">32.230</span> <span class="mi">11972</span><span class="o">-</span><span class="mi">11972</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">onInterceptTouchEvent</span> <span class="mi">0</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">36</span><span class="o">:</span><span class="mf">32.230</span> <span class="mi">11972</span><span class="o">-</span><span class="mi">11972</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">fl</span> <span class="n">onTouchEvent</span> <span class="n">action</span> <span class="mi">0</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">36</span><span class="o">:</span><span class="mf">32.286</span> <span class="mi">11972</span><span class="o">-</span><span class="mi">11972</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">fl</span> <span class="n">onTouchEvent</span> <span class="n">action</span> <span class="mi">2</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">36</span><span class="o">:</span><span class="mf">32.885</span> <span class="mi">11972</span><span class="o">-</span><span class="mi">11972</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">fl</span> <span class="n">onTouchEvent</span> <span class="n">action</span> <span class="mi">2</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">36</span><span class="o">:</span><span class="mf">32.901</span> <span class="mi">11972</span><span class="o">-</span><span class="mi">11972</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">fl</span> <span class="n">onTouchEvent</span> <span class="n">action</span> <span class="mi">2</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">36</span><span class="o">:</span><span class="mf">32.918</span> <span class="mi">11972</span><span class="o">-</span><span class="mi">11972</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">fl</span> <span class="n">onTouchEvent</span> <span class="n">action</span> <span class="mi">2</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">36</span><span class="o">:</span><span class="mf">33.018</span> <span class="mi">11972</span><span class="o">-</span><span class="mi">11972</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">fl</span> <span class="n">onTouchEvent</span> <span class="n">action</span> <span class="mi">2</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">36</span><span class="o">:</span><span class="mf">33.020</span> <span class="mi">11972</span><span class="o">-</span><span class="mi">11972</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">fl</span> <span class="n">onTouchEvent</span> <span class="n">action</span> <span class="mi">1</span></code></pre></figure>
+
+<p>拦截down事件，mMotionTarget=null,走情况1的路线。完全符合。</p>
+
+<p>再复现第三种情况，触摸textview以内区域。看日志：</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">40</span><span class="o">:</span><span class="mf">59.165</span> <span class="mi">11972</span><span class="o">-</span><span class="mi">11972</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">onInterceptTouchEvent</span> <span class="mi">0</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">40</span><span class="o">:</span><span class="mf">59.165</span> <span class="mi">11972</span><span class="o">-</span><span class="mi">11972</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">tv</span> <span class="n">dispatchTouchEvent</span> <span class="n">action</span> <span class="mi">0</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">40</span><span class="o">:</span><span class="mf">59.285</span> <span class="mi">11972</span><span class="o">-</span><span class="mi">11972</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">onInterceptTouchEvent</span> <span class="mi">2</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">40</span><span class="o">:</span><span class="mf">59.285</span> <span class="mi">11972</span><span class="o">-</span><span class="mi">11972</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">tv</span> <span class="n">dispatchTouchEvent</span> <span class="n">action</span> <span class="mi">2</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">40</span><span class="o">:</span><span class="mf">59.304</span> <span class="mi">11972</span><span class="o">-</span><span class="mi">11972</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">onInterceptTouchEvent</span> <span class="mi">2</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">40</span><span class="o">:</span><span class="mf">59.304</span> <span class="mi">11972</span><span class="o">-</span><span class="mi">11972</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">tv</span> <span class="n">dispatchTouchEvent</span> <span class="n">action</span> <span class="mi">2</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">40</span><span class="o">:</span><span class="mf">59.324</span> <span class="mi">11972</span><span class="o">-</span><span class="mi">11972</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">onInterceptTouchEvent</span> <span class="mi">2</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">40</span><span class="o">:</span><span class="mf">59.325</span> <span class="mi">11972</span><span class="o">-</span><span class="mi">11972</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">tv</span> <span class="n">dispatchTouchEvent</span> <span class="n">action</span> <span class="mi">2</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">40</span><span class="o">:</span><span class="mf">59.344</span> <span class="mi">11972</span><span class="o">-</span><span class="mi">11972</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">onInterceptTouchEvent</span> <span class="mi">2</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">40</span><span class="o">:</span><span class="mf">59.344</span> <span class="mi">11972</span><span class="o">-</span><span class="mi">11972</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">tv</span> <span class="n">dispatchTouchEvent</span> <span class="n">action</span> <span class="mi">2</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">40</span><span class="o">:</span><span class="mf">59.496</span> <span class="mi">11972</span><span class="o">-</span><span class="mi">11972</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">onInterceptTouchEvent</span> <span class="mi">1</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">40</span><span class="o">:</span><span class="mf">59.496</span> <span class="mi">11972</span><span class="o">-</span><span class="mi">11972</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">tv</span> <span class="n">dispatchTouchEvent</span> <span class="n">action</span> <span class="mi">1</span></code></pre></figure>
+
+<p>因为调用了情况2里的onInterceptTouchEvent，当然每次都是不拦截的，所以正常传递到了textview,属于情况3。完全符合。</p>
+
+<p>再复现第二种情况，修改下MyFrameLayout的拦截方法。</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="nd">@Override</span>
+    <span class="kd">public</span> <span class="kt">boolean</span> <span class="nf">onInterceptTouchEvent</span><span class="o">(</span><span class="nc">MotionEvent</span> <span class="n">ev</span><span class="o">)</span> <span class="o">{</span>
+        <span class="nc">Mlog</span><span class="o">.</span><span class="na">log</span><span class="o">(</span><span class="s">"onInterceptTouchEvent "</span> <span class="o">+</span> <span class="n">ev</span><span class="o">.</span><span class="na">getAction</span><span class="o">());</span>
+        <span class="kt">int</span> <span class="n">action</span> <span class="o">=</span> <span class="n">ev</span><span class="o">.</span><span class="na">getAction</span><span class="o">();</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">action</span> <span class="o">==</span> <span class="nc">MotionEvent</span><span class="o">.</span><span class="na">ACTION_MOVE</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="kc">true</span><span class="o">;</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="kd">super</span><span class="o">.</span><span class="na">onInterceptTouchEvent</span><span class="o">(</span><span class="n">ev</span><span class="o">);</span>
+    <span class="o">}</span></code></pre></figure>
+
+<p>看日志：</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">54</span><span class="o">:</span><span class="mf">39.303</span> <span class="mi">14106</span><span class="o">-</span><span class="mi">14106</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">onInterceptTouchEvent</span> <span class="mi">0</span>  
+<span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">54</span><span class="o">:</span><span class="mf">39.303</span> <span class="mi">14106</span><span class="o">-</span><span class="mi">14106</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">tv</span> <span class="n">dispatchTouchEvent</span> <span class="n">action</span> <span class="mi">0</span>  
+<span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">54</span><span class="o">:</span><span class="mf">39.402</span> <span class="mi">14106</span><span class="o">-</span><span class="mi">14106</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">onInterceptTouchEvent</span> <span class="mi">2</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">54</span><span class="o">:</span><span class="mf">39.403</span> <span class="mi">14106</span><span class="o">-</span><span class="mi">14106</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">tv</span> <span class="n">dispatchTouchEvent</span> <span class="n">action</span> <span class="mi">3</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">54</span><span class="o">:</span><span class="mf">39.419</span> <span class="mi">14106</span><span class="o">-</span><span class="mi">14106</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">fl</span> <span class="n">onTouchEvent</span> <span class="n">action</span> <span class="mi">2</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">54</span><span class="o">:</span><span class="mf">39.485</span> <span class="mi">14106</span><span class="o">-</span><span class="mi">14106</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">fl</span> <span class="n">onTouchEvent</span> <span class="n">action</span> <span class="mi">2</span>
+<span class="mi">2021</span><span class="o">-</span><span class="mo">03</span><span class="o">-</span><span class="mi">22</span> <span class="mi">11</span><span class="o">:</span><span class="mi">54</span><span class="o">:</span><span class="mf">39.524</span> <span class="mi">14106</span><span class="o">-</span><span class="mi">14106</span><span class="o">/</span><span class="n">com</span><span class="o">.</span><span class="na">zq</span><span class="o">.</span><span class="na">test</span> <span class="no">E</span><span class="o">/</span><span class="nl">ztest:</span> <span class="n">fl</span> <span class="n">onTouchEvent</span> <span class="n">action</span> <span class="mi">1</span></code></pre></figure>
+
+<p>又是一次完美复现。</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="k">if</span> <span class="o">(!</span><span class="n">disallowIntercept</span> <span class="o">&amp;&amp;</span> <span class="n">onInterceptTouchEvent</span><span class="o">(</span><span class="n">ev</span><span class="o">))</span> <span class="o">{</span>
+            <span class="kd">final</span> <span class="kt">float</span> <span class="n">xc</span> <span class="o">=</span> <span class="n">scrolledXFloat</span> <span class="o">-</span> <span class="o">(</span><span class="kt">float</span><span class="o">)</span> <span class="n">target</span><span class="o">.</span><span class="na">mLeft</span><span class="o">;</span>
+            <span class="kd">final</span> <span class="kt">float</span> <span class="n">yc</span> <span class="o">=</span> <span class="n">scrolledYFloat</span> <span class="o">-</span> <span class="o">(</span><span class="kt">float</span><span class="o">)</span> <span class="n">target</span><span class="o">.</span><span class="na">mTop</span><span class="o">;</span>
+            <span class="n">mPrivateFlags</span> <span class="o">&amp;=</span> <span class="o">~</span><span class="no">CANCEL_NEXT_UP_EVENT</span><span class="o">;</span>
+            <span class="n">ev</span><span class="o">.</span><span class="na">setAction</span><span class="o">(</span><span class="nc">MotionEvent</span><span class="o">.</span><span class="na">ACTION_CANCEL</span><span class="o">);</span></code></pre></figure>
+
+<p>我们的目标子控件也是接收到了ACTION_CANCEL事件呢。</p>
+
+<p>demo验证告一段落，四个字：完美验证。</p>
+
+<p>接下来就是看View的事件分发代码了，如下：</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">public</span> <span class="kt">boolean</span> <span class="nf">dispatchTouchEvent</span><span class="o">(</span><span class="nc">MotionEvent</span> <span class="n">event</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(!</span><span class="n">onFilterTouchEventForSecurity</span><span class="o">(</span><span class="n">event</span><span class="o">))</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="kc">false</span><span class="o">;</span>
+        <span class="o">}</span>
+
+        <span class="k">if</span> <span class="o">(</span><span class="n">mOnTouchListener</span> <span class="o">!=</span> <span class="kc">null</span> <span class="o">&amp;&amp;</span> <span class="o">(</span><span class="n">mViewFlags</span> <span class="o">&amp;</span> <span class="no">ENABLED_MASK</span><span class="o">)</span> <span class="o">==</span> <span class="no">ENABLED</span> <span class="o">&amp;&amp;</span>
+                <span class="n">mOnTouchListener</span><span class="o">.</span><span class="na">onTouch</span><span class="o">(</span><span class="k">this</span><span class="o">,</span> <span class="n">event</span><span class="o">))</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="kc">true</span><span class="o">;</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="nf">onTouchEvent</span><span class="o">(</span><span class="n">event</span><span class="o">);</span>
+    <span class="o">}</span></code></pre></figure>
+
+<p>第一段代码，是安全策略相关的，一般不会走。第二段代码，如果我们的mOnTouchListener.onTouch没有返回true,即没有消费事件。那么view还是
+会正常走onTouchEvent的。所以我们开发当中，不要随意让mOnTouchListener.onTouch返回true，这样会导致触摸事件不能往下传递。</p>
+
+<p>源码看到这里基本就结束了，我们再结合一下onTouchEvent()这个api。可以推断出，对于actionDown，如果有子控件接收getWindow().superDispatchTouchEvent(ev)
+会返回true。对于其他的action,是由目标view的onTouchEvent和其viewGroup的onTouchEvent决定。view的onTouchEvent不消费事件，则由viewGroup的onTouchEvent消费事件，
+如果viewGroup的onTouchEvent也不消费事件，返回false。那么getWindow().superDispatchTouchEvent(ev)就会返回false，接着调用Activity的onTouchEvent。</p>
+
+<p>至此整个dispatchTouchEvent,onInterceptTouchEvent,onTouchEvent在Activity,viewGroup,view这三层的关系，我们从源码层面就理得很清晰了。本篇博客到此为止。</p>
+:ET

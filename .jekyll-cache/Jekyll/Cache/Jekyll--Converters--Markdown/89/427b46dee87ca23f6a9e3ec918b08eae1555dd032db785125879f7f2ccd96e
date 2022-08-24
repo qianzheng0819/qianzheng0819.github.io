@@ -1,0 +1,75 @@
+I";<h3 id="git相关">git相关</h3>
+<ul>
+  <li>Github page经常更新很慢，所以就需要提交一个空的内容: <code class="language-plaintext highlighter-rouge">git commit -m "zzz" --allow-empty</code></li>
+  <li>gcc hellojni.c -shared -fPIC -o libhellojni.so</li>
+  <li>git rm –cached $file 清除缓存</li>
+  <li>git push origin -d $branch</li>
+  <li>git checkout –track origin/branch 从远程分支拉取代码</li>
+  <li>git remote set-url origin $gitPath 设置远端项目的url</li>
+  <li>git branch -u(–set-upstream-to) origin/$path 建立当前分支与远程分支的映射关系</li>
+  <li>git push –set-upstream origin dev_6.3_qian 向远端推分支，且设置映射关系</li>
+  <li>git push -u origin dev_6.3_qian 向远端推分支，且设置映射关系</li>
+  <li>git checkout – . How do I discard unstaged changes in Git?</li>
+  <li>git clean  删除本地未add的文件</li>
+  <li>git merget $branch –allow-unrelated-histories 解决fatal: refusing to merge unrelated histories</li>
+  <li>git remote add origin https://github.com/guyibang/TEST2.git  <br />
+git push -u origin master 这样可以给github推我们本地的项目</li>
+  <li>git branch -vv查看映射关系</li>
+  <li>git fetch –prune https://blog.csdn.net/sgs595595/article/details/72480346</li>
+  <li>首先清除远程分支的本地缓存：git fetch -p origin</li>
+  <li>WURQ2CZLCOGDUSXM</li>
+</ul>
+
+<h3 id="adb相关">adb相关</h3>
+<ul>
+  <li>pm path packagename</li>
+  <li>adb shell reboot -p 关机</li>
+  <li>adb shell input keyevent 3 桌面</li>
+  <li>resetprop ro.debuggable 1;resetprop service.adb.root 1;magiskpolicy –live ‘allow adbd adbd process setcurrent’;magiskpolicy –live ‘allow adbd su process dyntransition’;magiskpolicy –live ‘permissive { su }’;kill -9 <code class="language-plaintext highlighter-rouge">ps -A | grep adbd | awk '{print $2}' </code></li>
+  <li>adb shell am force-stop pkgname</li>
+  <li>
+    <table>
+      <tbody>
+        <tr>
+          <td>adb shell dumpsys activity top</td>
+          <td>sls activity</td>
+        </tr>
+      </tbody>
+    </table>
+  </li>
+</ul>
+
+<h3 id="其他">其他</h3>
+<ul>
+  <li>
+    <table>
+      <tbody>
+        <tr>
+          <td>du -hd 1</td>
+          <td>sort -hr</td>
+          <td>head 找出1级目录下大小最大10个文件夹 C:\Users\qianzheng\AppData\Roaming\Tencent\Logs</td>
+        </tr>
+      </tbody>
+    </table>
+  </li>
+  <li>切换jdk版本 sudo update-alternatives</li>
+  <li>
+    <table>
+      <tbody>
+        <tr>
+          <td>find .</td>
+          <td>xargs grep -ri “IBM” -l</td>
+        </tr>
+      </tbody>
+    </table>
+  </li>
+  <li>du -ah –max-depth=1
+du -sh : 查看当前目录总共占的容量。而不单独列出各子项占用的容量
+du -lh –max-depth=1 : 查看当前目录下一级子文件和子目录占用的磁盘容量。</li>
+</ul>
+
+<h3 id="android零散知识">android零散知识</h3>
+<ul>
+  <li>android:animateLayoutChanges属性，关于布局动画是针对ViewGroup而言的，意指ViewGroup在增加子View或者删除子View时其子View的过渡动画</li>
+</ul>
+:ET

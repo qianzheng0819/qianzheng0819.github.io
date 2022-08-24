@@ -1,0 +1,244 @@
+I"A�<h3 id="view-measure方法">View Measure()方法</h3>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">public</span> <span class="kd">final</span> <span class="kt">void</span> <span class="nf">measure</span><span class="o">(</span><span class="kt">int</span> <span class="n">widthMeasureSpec</span><span class="o">,</span> <span class="kt">int</span> <span class="n">heightMeasureSpec</span><span class="o">)</span> <span class="o">{</span>
+    <span class="c1">//首先判断当前View的layoutMode是不是特例LAYOUT_MODE_OPTICAL_BOUNDS</span>
+        <span class="kt">boolean</span> <span class="n">optical</span> <span class="o">=</span> <span class="n">isLayoutModeOptical</span><span class="o">(</span><span class="k">this</span><span class="o">);</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">optical</span> <span class="o">!=</span> <span class="n">isLayoutModeOptical</span><span class="o">(</span><span class="n">mParent</span><span class="o">))</span> <span class="o">{</span>
+          <span class="c1">//LAYOUT_MODE_OPTICAL_BOUNDS是特例情况，比较少见,不分析</span>
+            <span class="nc">Insets</span> <span class="n">insets</span> <span class="o">=</span> <span class="n">getOpticalInsets</span><span class="o">();</span>
+            <span class="kt">int</span> <span class="n">oWidth</span>  <span class="o">=</span> <span class="n">insets</span><span class="o">.</span><span class="na">left</span> <span class="o">+</span> <span class="n">insets</span><span class="o">.</span><span class="na">right</span><span class="o">;</span>
+            <span class="kt">int</span> <span class="n">oHeight</span> <span class="o">=</span> <span class="n">insets</span><span class="o">.</span><span class="na">top</span>  <span class="o">+</span> <span class="n">insets</span><span class="o">.</span><span class="na">bottom</span><span class="o">;</span>
+            <span class="n">widthMeasureSpec</span>  <span class="o">=</span> <span class="nc">MeasureSpec</span><span class="o">.</span><span class="na">adjust</span><span class="o">(</span><span class="n">widthMeasureSpec</span><span class="o">,</span>  <span class="n">optical</span> <span class="o">?</span> <span class="o">-</span><span class="n">oWidth</span>  <span class="o">:</span> <span class="n">oWidth</span><span class="o">);</span>
+            <span class="n">heightMeasureSpec</span> <span class="o">=</span> <span class="nc">MeasureSpec</span><span class="o">.</span><span class="na">adjust</span><span class="o">(</span><span class="n">heightMeasureSpec</span><span class="o">,</span> <span class="n">optical</span> <span class="o">?</span> <span class="o">-</span><span class="n">oHeight</span> <span class="o">:</span> <span class="n">oHeight</span><span class="o">);</span>
+        <span class="o">}</span>
+
+        <span class="c1">//根据widthMeasureSpec和heightMeasureSpec计算key值，在下面用key值作为键，缓存我们测量得到的结果</span>
+        <span class="kt">long</span> <span class="n">key</span> <span class="o">=</span> <span class="o">(</span><span class="kt">long</span><span class="o">)</span> <span class="n">widthMeasureSpec</span> <span class="o">&lt;&lt;</span> <span class="mi">32</span> <span class="o">|</span> <span class="o">(</span><span class="kt">long</span><span class="o">)</span> <span class="n">heightMeasureSpec</span> <span class="o">&amp;</span> <span class="mh">0xffffffff</span><span class="no">L</span><span class="o">;</span>
+        <span class="c1">//mMeasureCache是LongSparseLongArray类型的成员变量，</span>
+        <span class="c1">//其缓存着View在不同widthMeasureSpec、heightMeasureSpec下测量过的结果</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">mMeasureCache</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span> <span class="n">mMeasureCache</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">LongSparseLongArray</span><span class="o">(</span><span class="mi">2</span><span class="o">);</span>
+
+        <span class="c1">//mOldWidthMeasureSpec和mOldHeightMeasureSpec分别表示上次对View进行测量时的widthMeasureSpec和heightMeasureSpec</span>
+        <span class="c1">//执行View的measure方法时，View总是先检查一下是不是真的有必要费很大力气去做真正的测量工作</span>
+        <span class="c1">//mPrivateFlags是一个Int类型的值，其记录了View的各种状态位</span>
+        <span class="c1">//如果(mPrivateFlags &amp; PFLAG_FORCE_LAYOUT) == PFLAG_FORCE_LAYOUT，</span>
+        <span class="c1">//那么表示当前View需要强制进行layout（比如执行了View的forceLayout方法），所以这种情况下要尝试进行测量</span>
+        <span class="c1">//如果新传入的widthMeasureSpec/heightMeasureSpec与上次测量时的mOldWidthMeasureSpec/mOldHeightMeasureSpec不等，</span>
+        <span class="c1">//那么也就是说该View的父ViewGroup对该View的尺寸的限制情况有变化，这种情况下要尝试进行测量</span>
+        <span class="k">if</span> <span class="o">((</span><span class="n">mPrivateFlags</span> <span class="o">&amp;</span> <span class="no">PFLAG_FORCE_LAYOUT</span><span class="o">)</span> <span class="o">==</span> <span class="no">PFLAG_FORCE_LAYOUT</span> <span class="o">||</span>
+                <span class="n">widthMeasureSpec</span> <span class="o">!=</span> <span class="n">mOldWidthMeasureSpec</span> <span class="o">||</span>
+                <span class="n">heightMeasureSpec</span> <span class="o">!=</span> <span class="n">mOldHeightMeasureSpec</span><span class="o">)</span> <span class="o">{</span>
+
+            <span class="c1">//通过按位操作，重置View的状态标志mPrivateFlags，将其标记为未测量状态</span>
+            <span class="n">mPrivateFlags</span> <span class="o">&amp;=</span> <span class="o">~</span><span class="no">PFLAG_MEASURED_DIMENSION_SET</span><span class="o">;</span>
+
+            <span class="c1">//对阿拉伯语、希伯来语等从右到左书写、布局的语言进行特殊处理</span>
+            <span class="n">resolveRtlPropertiesIfNeeded</span><span class="o">();</span>
+
+        <span class="c1">//在View真正进行测量之前，View还想进一步确认能不能从已有的缓存mMeasureCache中读取缓存过的测量结果</span>
+        <span class="c1">//如果是强制layout导致的测量，那么将cacheIndex设置为-1，即不从缓存中读取测量结果</span>
+        <span class="c1">//如果不是强制layout导致的测量，那么我们就用上面根据measureSpec计算出来的key值作为缓存索引cacheIndex,这时候有可能找到相应的值,找到就返回对应索引;也可能找不到,找不到就返回-1</span>
+            <span class="kt">int</span> <span class="n">cacheIndex</span> <span class="o">=</span> <span class="o">(</span><span class="n">mPrivateFlags</span> <span class="o">&amp;</span> <span class="no">PFLAG_FORCE_LAYOUT</span><span class="o">)</span> <span class="o">==</span> <span class="no">PFLAG_FORCE_LAYOUT</span> <span class="o">?</span> <span class="o">-</span><span class="mi">1</span> <span class="o">:</span>
+                    <span class="n">mMeasureCache</span><span class="o">.</span><span class="na">indexOfKey</span><span class="o">(</span><span class="n">key</span><span class="o">);</span>
+
+            <span class="k">if</span> <span class="o">(</span><span class="n">cacheIndex</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="o">||</span> <span class="n">sIgnoreMeasureCache</span><span class="o">)</span> <span class="o">{</span>
+            <span class="c1">//在缓存中找不到相应的值或者需要忽略缓存结果的时候,重新测量一次</span>
+            <span class="c1">//此处调用onMeasure方法，并把尺寸限制条件widthMeasureSpec和heightMeasureSpec传入进去</span>
+            <span class="c1">//onMeasure方法中将会进行实际的测量工作，并把测量的结果保存到成员变量中</span>
+                <span class="n">onMeasure</span><span class="o">(</span><span class="n">widthMeasureSpec</span><span class="o">,</span> <span class="n">heightMeasureSpec</span><span class="o">);</span>
+            <span class="c1">//onMeasure执行完后，通过位操作，重置View的状态mPrivateFlags，将其标记为在layout之前不必再进行测量的状态</span>
+                <span class="n">mPrivateFlags3</span> <span class="o">&amp;=</span> <span class="o">~</span><span class="no">PFLAG3_MEASURE_NEEDED_BEFORE_LAYOUT</span><span class="o">;</span>
+            <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="c1">//如果运行到此处，那么表示当前的条件允许View从缓存成员变量mMeasureCache中读取测量过的结果</span>
+            <span class="c1">//用上面得到的cacheIndex从缓存mMeasureCache中取出值，不必在调用onMeasure方法进行测量了</span>
+                <span class="kt">long</span> <span class="n">value</span> <span class="o">=</span> <span class="n">mMeasureCache</span><span class="o">.</span><span class="na">valueAt</span><span class="o">(</span><span class="n">cacheIndex</span><span class="o">);</span>
+            <span class="c1">//一旦我们从缓存中读到值，我们就可以调用setMeasuredDimensionRaw方法将当前测量的结果保存到成员变量中</span>
+                <span class="n">setMeasuredDimensionRaw</span><span class="o">((</span><span class="kt">int</span><span class="o">)</span> <span class="o">(</span><span class="n">value</span> <span class="o">&gt;&gt;</span> <span class="mi">32</span><span class="o">),</span> <span class="o">(</span><span class="kt">int</span><span class="o">)</span> <span class="n">value</span><span class="o">);</span>
+                <span class="n">mPrivateFlags3</span> <span class="o">|=</span> <span class="no">PFLAG3_MEASURE_NEEDED_BEFORE_LAYOUT</span><span class="o">;</span>
+            <span class="o">}</span>
+        <span class="c1">//如果我们自定义的View重写了onMeasure方法，但是没有调用setMeasuredDimension()方法，</span>
+        <span class="c1">//那么此处就会抛出异常，提醒开发者在onMeasure方法中调用setMeasuredDimension()方法</span>
+        <span class="c1">//Android是如何知道我们有没有在onMeasure方法中调用setMeasuredDimension()方法的呢？</span>
+        <span class="c1">//方法很简单，还是通过解析状态位mPrivateFlags。</span>
+        <span class="c1">//setMeasuredDimension()方法中会将mPrivateFlags设置为PFLAG_MEASURED_DIMENSION_SET状态，即已测量状态，</span>
+        <span class="c1">//此处就检查mPrivateFlags是否含有PFLAG_MEASURED_DIMENSION_SET状态即可判断setMeasuredDimension是否被调用</span>
+            <span class="k">if</span> <span class="o">((</span><span class="n">mPrivateFlags</span> <span class="o">&amp;</span> <span class="no">PFLAG_MEASURED_DIMENSION_SET</span><span class="o">)</span> <span class="o">!=</span> <span class="no">PFLAG_MEASURED_DIMENSION_SET</span><span class="o">)</span> <span class="o">{</span>
+                <span class="k">throw</span> <span class="k">new</span> <span class="nf">IllegalStateException</span><span class="o">(</span><span class="s">"View with id "</span> <span class="o">+</span> <span class="n">getId</span><span class="o">()</span> <span class="o">+</span> <span class="s">": "</span>
+                        <span class="o">+</span> <span class="n">getClass</span><span class="o">().</span><span class="na">getName</span><span class="o">()</span> <span class="o">+</span> <span class="s">"#onMeasure() did not set the"</span>
+                        <span class="o">+</span> <span class="s">" measured dimension by calling"</span>
+                        <span class="o">+</span> <span class="s">" setMeasuredDimension()"</span><span class="o">);</span>
+            <span class="o">}</span>
+        <span class="c1">//到了这里,View已经测量完了并且将测量的结果保存在View的mMeasuredWidth和mMeasuredHeight中,将标志位置为可以layout的状态</span>
+            <span class="n">mPrivateFlags</span> <span class="o">|=</span> <span class="no">PFLAG_LAYOUT_REQUIRED</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="c1">//mOldWidthMeasureSpec和mOldHeightMeasureSpec保存着最近一次测量时的MeasureSpec，</span>
+    <span class="c1">//在测量完成后将这次新传入的MeasureSpec赋值给它们</span>
+        <span class="n">mOldWidthMeasureSpec</span> <span class="o">=</span> <span class="n">widthMeasureSpec</span><span class="o">;</span>
+        <span class="n">mOldHeightMeasureSpec</span> <span class="o">=</span> <span class="n">heightMeasureSpec</span><span class="o">;</span>
+    <span class="c1">//最后用上面计算出的key作为键，测量结果作为值，将该键值对放入成员变量mMeasureCache中，</span>
+    <span class="c1">//这样就实现了对本次测量结果的缓存，以便在下次measure方法执行的时候，有可能将其从中直接读出，</span>
+    <span class="c1">//从而省去实际测量的步骤</span>
+        <span class="n">mMeasureCache</span><span class="o">.</span><span class="na">put</span><span class="o">(</span><span class="n">key</span><span class="o">,</span> <span class="o">((</span><span class="kt">long</span><span class="o">)</span> <span class="n">mMeasuredWidth</span><span class="o">)</span> <span class="o">&lt;&lt;</span> <span class="mi">32</span> <span class="o">|</span>
+                <span class="o">(</span><span class="kt">long</span><span class="o">)</span> <span class="n">mMeasuredHeight</span> <span class="o">&amp;</span> <span class="mh">0xffffffff</span><span class="no">L</span><span class="o">);</span> <span class="c1">// suppress sign extension</span>
+    <span class="o">}</span></code></pre></figure>
+
+<h3 id="一些记录待修改">一些记录(待修改)</h3>
+<ul>
+  <li>onMeasure()和measure()方法.父控件给你的约束,已经属于你自己的约束,再与父控件无关了.你可以根据该约束去生成你子控件的约束.以此循环.</li>
+  <li>android官方<a href="https://developer.android.com/training/custom-views/custom-drawing.html?hl=es-ar">onMeasure()</a>方法</li>
+  <li>ScrollView嵌套ListView问题产生原理</li>
+  <li><a href="https://juejin.im/entry/58871fa1128fe100684512fc">视图架构详解</a></li>
+  <li>ActivityThread.handleResumeActivity()-&gt;r.activity.makeVisible()
+-&gt;wm.addView(mDecor, getWindow().getAttributes())-&gt;WindowManagerGlobal.addView()
+-&gt;root.setView()-&gt;ViewRootImpl mView=mDecor,requestLayout-&gt;绘制三部曲.</li>
+  <li>Activity.setContentView-&gt;installDecor(),ActivityThread-&gt;handleResumeActivity</li>
+</ul>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java">    <span class="kd">final</span>  <span class="nc">Activity</span>  <span class="n">a</span> <span class="o">=</span> <span class="n">r</span> <span class="o">.</span><span class="na">activity</span><span class="o">;</span>
+
+    <span class="n">r</span> <span class="o">.</span><span class="na">window</span>  <span class="o">=</span> <span class="n">r</span> <span class="o">.</span><span class="na">activity</span> <span class="o">.</span><span class="na">getWindow</span> <span class="o">();</span>
+
+    <span class="nc">View</span>  <span class="n">decor</span> <span class="o">=</span>  <span class="n">r</span><span class="o">.</span> <span class="n">window</span><span class="o">.</span> <span class="nf">getDecorView</span><span class="o">();</span>
+
+    <span class="n">decor</span> <span class="o">.</span><span class="na">setVisibility</span> <span class="o">(</span><span class="nc">View</span> <span class="o">.</span><span class="na">INVISIBLE</span> <span class="o">);</span>
+
+    <span class="nc">ViewManager</span>  <span class="n">wm</span> <span class="o">=</span>  <span class="n">a</span><span class="o">.</span> <span class="nf">getWindowManager</span><span class="o">();</span>
+
+    <span class="nc">WindowManager</span> <span class="o">.</span><span class="na">LayoutParams</span>  <span class="n">l</span> <span class="o">=</span>  <span class="n">r</span><span class="o">.</span> <span class="n">window</span><span class="o">.</span> <span class="nf">getAttributes</span><span class="o">();</span></code></pre></figure>
+
+<ul>
+  <li>ActivityThread.performLaunchActivity-&gt;activity.attach-&gt;mWindow=new PhoneWindow();</li>
+</ul>
+
+<h3 id="framelayout的onmeasure方法">FrameLayout的onMeasure()方法</h3>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="nd">@Override</span>
+<span class="kd">protected</span> <span class="kt">void</span> <span class="nf">onMeasure</span><span class="o">(</span><span class="kt">int</span> <span class="n">widthMeasureSpec</span><span class="o">,</span> <span class="kt">int</span> <span class="n">heightMeasureSpec</span><span class="o">)</span> <span class="o">{</span>
+    <span class="kt">int</span> <span class="n">count</span> <span class="o">=</span> <span class="n">getChildCount</span><span class="o">();</span>
+
+    <span class="c1">// 只要有一个模式是at_most,则为true;只有两个都是exactly,才为false.</span>
+    <span class="kd">final</span> <span class="kt">boolean</span> <span class="n">measureMatchParentChildren</span> <span class="o">=</span>
+            <span class="nc">MeasureSpec</span><span class="o">.</span><span class="na">getMode</span><span class="o">(</span><span class="n">widthMeasureSpec</span><span class="o">)</span> <span class="o">!=</span> <span class="nc">MeasureSpec</span><span class="o">.</span><span class="na">EXACTLY</span> <span class="o">||</span>
+            <span class="nc">MeasureSpec</span><span class="o">.</span><span class="na">getMode</span><span class="o">(</span><span class="n">heightMeasureSpec</span><span class="o">)</span> <span class="o">!=</span> <span class="nc">MeasureSpec</span><span class="o">.</span><span class="na">EXACTLY</span><span class="o">;</span>
+    <span class="n">mMatchParentChildren</span><span class="o">.</span><span class="na">clear</span><span class="o">();</span>
+    <span class="o">......</span>
+
+    <span class="k">for</span> <span class="o">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">count</span><span class="o">;</span> <span class="n">i</span><span class="o">++)</span> <span class="o">{</span>
+        <span class="kd">final</span> <span class="nc">View</span> <span class="n">child</span> <span class="o">=</span> <span class="n">getChildAt</span><span class="o">(</span><span class="n">i</span><span class="o">);</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">mMeasureAllChildren</span> <span class="o">||</span> <span class="n">child</span><span class="o">.</span><span class="na">getVisibility</span><span class="o">()</span> <span class="o">!=</span> <span class="no">GONE</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">measureChildWithMargins</span><span class="o">(</span><span class="n">child</span><span class="o">,</span> <span class="n">widthMeasureSpec</span><span class="o">,</span> <span class="mi">0</span><span class="o">,</span> <span class="n">heightMeasureSpec</span><span class="o">,</span> <span class="mi">0</span><span class="o">);</span>
+            <span class="kd">final</span> <span class="nc">LayoutParams</span> <span class="n">lp</span> <span class="o">=</span> <span class="o">(</span><span class="nc">LayoutParams</span><span class="o">)</span> <span class="n">child</span><span class="o">.</span><span class="na">getLayoutParams</span><span class="o">();</span>
+            <span class="n">maxWidth</span> <span class="o">=</span> <span class="nc">Math</span><span class="o">.</span><span class="na">max</span><span class="o">(</span><span class="n">maxWidth</span><span class="o">,</span>
+                    <span class="n">child</span><span class="o">.</span><span class="na">getMeasuredWidth</span><span class="o">()</span> <span class="o">+</span> <span class="n">lp</span><span class="o">.</span><span class="na">leftMargin</span> <span class="o">+</span> <span class="n">lp</span><span class="o">.</span><span class="na">rightMargin</span><span class="o">);</span>
+            <span class="n">maxHeight</span> <span class="o">=</span> <span class="nc">Math</span><span class="o">.</span><span class="na">max</span><span class="o">(</span><span class="n">maxHeight</span><span class="o">,</span>
+                    <span class="n">child</span><span class="o">.</span><span class="na">getMeasuredHeight</span><span class="o">()</span> <span class="o">+</span> <span class="n">lp</span><span class="o">.</span><span class="na">topMargin</span> <span class="o">+</span> <span class="n">lp</span><span class="o">.</span><span class="na">bottomMargin</span><span class="o">);</span>
+            <span class="n">childState</span> <span class="o">=</span> <span class="n">combineMeasuredStates</span><span class="o">(</span><span class="n">childState</span><span class="o">,</span> <span class="n">child</span><span class="o">.</span><span class="na">getMeasuredState</span><span class="o">());</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">measureMatchParentChildren</span><span class="o">)</span> <span class="o">{</span>
+                <span class="k">if</span> <span class="o">(</span><span class="n">lp</span><span class="o">.</span><span class="na">width</span> <span class="o">==</span> <span class="nc">LayoutParams</span><span class="o">.</span><span class="na">MATCH_PARENT</span> <span class="o">||</span>
+                        <span class="n">lp</span><span class="o">.</span><span class="na">height</span> <span class="o">==</span> <span class="nc">LayoutParams</span><span class="o">.</span><span class="na">MATCH_PARENT</span><span class="o">)</span> <span class="o">{</span>
+                    <span class="n">mMatchParentChildren</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">child</span><span class="o">);</span>
+                <span class="o">}</span>
+            <span class="o">}</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+    <span class="o">......</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>看一下ViewGroup的<strong>measureChildWithMargins</strong>方法</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">protected</span> <span class="kt">void</span> <span class="nf">measureChildWithMargins</span><span class="o">(</span><span class="nc">View</span> <span class="n">child</span><span class="o">,</span>
+            <span class="kt">int</span> <span class="n">parentWidthMeasureSpec</span><span class="o">,</span> <span class="kt">int</span> <span class="n">widthUsed</span><span class="o">,</span>
+            <span class="kt">int</span> <span class="n">parentHeightMeasureSpec</span><span class="o">,</span> <span class="kt">int</span> <span class="n">heightUsed</span><span class="o">)</span> <span class="o">{</span>
+        <span class="kd">final</span> <span class="nc">MarginLayoutParams</span> <span class="n">lp</span> <span class="o">=</span> <span class="o">(</span><span class="nc">MarginLayoutParams</span><span class="o">)</span> <span class="n">child</span><span class="o">.</span><span class="na">getLayoutParams</span><span class="o">();</span>
+
+        <span class="kd">final</span> <span class="kt">int</span> <span class="n">childWidthMeasureSpec</span> <span class="o">=</span> <span class="n">getChildMeasureSpec</span><span class="o">(</span><span class="n">parentWidthMeasureSpec</span><span class="o">,</span>
+                <span class="n">mPaddingLeft</span> <span class="o">+</span> <span class="n">mPaddingRight</span> <span class="o">+</span> <span class="n">lp</span><span class="o">.</span><span class="na">leftMargin</span> <span class="o">+</span> <span class="n">lp</span><span class="o">.</span><span class="na">rightMargin</span>
+                        <span class="o">+</span> <span class="n">widthUsed</span><span class="o">,</span> <span class="n">lp</span><span class="o">.</span><span class="na">width</span><span class="o">);</span>
+        <span class="kd">final</span> <span class="kt">int</span> <span class="n">childHeightMeasureSpec</span> <span class="o">=</span> <span class="n">getChildMeasureSpec</span><span class="o">(</span><span class="n">parentHeightMeasureSpec</span><span class="o">,</span>
+                <span class="n">mPaddingTop</span> <span class="o">+</span> <span class="n">mPaddingBottom</span> <span class="o">+</span> <span class="n">lp</span><span class="o">.</span><span class="na">topMargin</span> <span class="o">+</span> <span class="n">lp</span><span class="o">.</span><span class="na">bottomMargin</span>
+                        <span class="o">+</span> <span class="n">heightUsed</span><span class="o">,</span> <span class="n">lp</span><span class="o">.</span><span class="na">height</span><span class="o">);</span>
+
+        <span class="n">child</span><span class="o">.</span><span class="na">measure</span><span class="o">(</span><span class="n">childWidthMeasureSpec</span><span class="o">,</span> <span class="n">childHeightMeasureSpec</span><span class="o">);</span>
+    <span class="o">}</span></code></pre></figure>
+
+<p>比较简单,跳过.关注<strong>getChildMeasureSpec</strong>方法</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">public</span> <span class="kd">static</span> <span class="kt">int</span> <span class="nf">getChildMeasureSpec</span><span class="o">(</span><span class="kt">int</span> <span class="n">spec</span><span class="o">,</span> <span class="kt">int</span> <span class="n">padding</span><span class="o">,</span> <span class="kt">int</span> <span class="n">childDimension</span><span class="o">)</span> <span class="o">{</span>
+    <span class="c1">//获取父View的测量模式</span>
+    <span class="kt">int</span> <span class="n">specMode</span> <span class="o">=</span> <span class="nc">MeasureSpec</span><span class="o">.</span><span class="na">getMode</span><span class="o">(</span><span class="n">spec</span><span class="o">);</span>
+    <span class="c1">//获取父View的测量大小</span>
+    <span class="kt">int</span> <span class="n">specSize</span> <span class="o">=</span> <span class="nc">MeasureSpec</span><span class="o">.</span><span class="na">getSize</span><span class="o">(</span><span class="n">spec</span><span class="o">);</span>
+
+    <span class="c1">//父View的大小减去第二个参数 , 就是子View的有效大小 , 不能小于0</span>
+    <span class="kt">int</span> <span class="n">size</span> <span class="o">=</span> <span class="nc">Math</span><span class="o">.</span><span class="na">max</span><span class="o">(</span><span class="mi">0</span><span class="o">,</span> <span class="n">specSize</span> <span class="o">-</span> <span class="n">padding</span><span class="o">);</span>
+
+    <span class="c1">//最终测量规格的大小</span>
+    <span class="kt">int</span> <span class="n">resultSize</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+    <span class="c1">//最终测量规格的模式</span>
+    <span class="kt">int</span> <span class="n">resultMode</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+
+    <span class="k">switch</span> <span class="o">(</span><span class="n">specMode</span><span class="o">)</span> <span class="o">{</span>
+    <span class="c1">//父View 的模式为EXACTLY时</span>
+    <span class="k">case</span> <span class="nc">MeasureSpec</span><span class="o">.</span><span class="na">EXACTLY</span><span class="o">:</span>
+        <span class="c1">//第三个参数刚才列出了三种情况 , &gt;=0 就是固定大小的情况</span>
+        <span class="c1">//因为WRAP_CONTENT为-2 , MATCH_PARENT为-1</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">childDimension</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+            <span class="c1">//当子View的宽度为固定大小时 , 测量大小设置其固定大小, 模式为EXACTLY</span>
+            <span class="n">resultSize</span> <span class="o">=</span> <span class="n">childDimension</span><span class="o">;</span>
+            <span class="n">resultMode</span> <span class="o">=</span> <span class="nc">MeasureSpec</span><span class="o">.</span><span class="na">EXACTLY</span><span class="o">;</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">childDimension</span> <span class="o">==</span> <span class="nc">LayoutParams</span><span class="o">.</span><span class="na">MATCH_PARENT</span><span class="o">)</span> <span class="o">{</span>
+            <span class="c1">//当子View的宽度为MATCH_PARENT时 , 测量大小为上面算出来的子View的有效大小 , 并且模式为EXACTLY</span>
+            <span class="n">resultSize</span> <span class="o">=</span> <span class="n">size</span><span class="o">;</span>
+            <span class="n">resultMode</span> <span class="o">=</span> <span class="nc">MeasureSpec</span><span class="o">.</span><span class="na">EXACTLY</span><span class="o">;</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">childDimension</span> <span class="o">==</span> <span class="nc">LayoutParams</span><span class="o">.</span><span class="na">WRAP_CONTENT</span><span class="o">)</span> <span class="o">{</span>
+            <span class="c1">//当子View的宽度为WRAP_CONTENT时 , 测量大小为子View的有效大小 , 并且模式为AT_MOST(AT_MOST可以认为是不确定大小 , 但是给你一个范围就是不能大于子View的有效大小 , 而EXACTLY就是固定大小了)</span>
+            <span class="n">resultSize</span> <span class="o">=</span> <span class="n">size</span><span class="o">;</span>
+            <span class="n">resultMode</span> <span class="o">=</span> <span class="nc">MeasureSpec</span><span class="o">.</span><span class="na">AT_MOST</span><span class="o">;</span>
+        <span class="o">}</span>
+        <span class="k">break</span><span class="o">;</span>
+
+    <span class="c1">//当父View大小不确定的情况:</span>
+    <span class="k">case</span> <span class="nc">MeasureSpec</span><span class="o">.</span><span class="na">AT_MOST</span><span class="o">:</span>
+        <span class="c1">//子View大小固定时还是跟上面一样的情况 , 不考虑父View的情况</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">childDimension</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+            <span class="c1">// Child wants a specific size... so be it</span>
+            <span class="n">resultSize</span> <span class="o">=</span> <span class="n">childDimension</span><span class="o">;</span>
+            <span class="n">resultMode</span> <span class="o">=</span> <span class="nc">MeasureSpec</span><span class="o">.</span><span class="na">EXACTLY</span><span class="o">;</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">childDimension</span> <span class="o">==</span> <span class="nc">LayoutParams</span><span class="o">.</span><span class="na">MATCH_PARENT</span><span class="o">)</span> <span class="o">{</span>
+            <span class="c1">//子View的宽度是MATCH_PARENT还是WRAP_CONTENT都一样 ,</span>
+            <span class="c1">//模式为AT_MOST , 不能超过子View有效大小</span>
+            <span class="n">resultSize</span> <span class="o">=</span> <span class="n">size</span><span class="o">;</span>
+            <span class="n">resultMode</span> <span class="o">=</span> <span class="nc">MeasureSpec</span><span class="o">.</span><span class="na">AT_MOST</span><span class="o">;</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">childDimension</span> <span class="o">==</span> <span class="nc">LayoutParams</span><span class="o">.</span><span class="na">WRAP_CONTENT</span><span class="o">)</span> <span class="o">{</span>
+            <span class="c1">// Child wants to determine its own size. It can't be</span>
+            <span class="c1">// bigger than us.</span>
+            <span class="n">resultSize</span> <span class="o">=</span> <span class="n">size</span><span class="o">;</span>
+            <span class="n">resultMode</span> <span class="o">=</span> <span class="nc">MeasureSpec</span><span class="o">.</span><span class="na">AT_MOST</span><span class="o">;</span>
+        <span class="o">}</span>
+        <span class="k">break</span><span class="o">;</span>
+
+    <span class="c1">// 这个情况不讨论.</span>
+    <span class="k">case</span> <span class="nc">MeasureSpec</span><span class="o">.</span><span class="na">UNSPECIFIED</span><span class="o">:</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">childDimension</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+            <span class="c1">// Child wants a specific size... let him have it</span>
+            <span class="n">resultSize</span> <span class="o">=</span> <span class="n">childDimension</span><span class="o">;</span>
+            <span class="n">resultMode</span> <span class="o">=</span> <span class="nc">MeasureSpec</span><span class="o">.</span><span class="na">EXACTLY</span><span class="o">;</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">childDimension</span> <span class="o">==</span> <span class="nc">LayoutParams</span><span class="o">.</span><span class="na">MATCH_PARENT</span><span class="o">)</span> <span class="o">{</span>
+            <span class="c1">// Child wants to be our size... find out how big it should</span>
+            <span class="c1">// be</span>
+            <span class="n">resultSize</span> <span class="o">=</span> <span class="nc">View</span><span class="o">.</span><span class="na">sUseZeroUnspecifiedMeasureSpec</span> <span class="o">?</span> <span class="mi">0</span> <span class="o">:</span> <span class="n">size</span><span class="o">;</span>
+            <span class="n">resultMode</span> <span class="o">=</span> <span class="nc">MeasureSpec</span><span class="o">.</span><span class="na">UNSPECIFIED</span><span class="o">;</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">childDimension</span> <span class="o">==</span> <span class="nc">LayoutParams</span><span class="o">.</span><span class="na">WRAP_CONTENT</span><span class="o">)</span> <span class="o">{</span>
+            <span class="c1">// Child wants to determine its own size.... find out how</span>
+            <span class="c1">// big it should be</span>
+            <span class="n">resultSize</span> <span class="o">=</span> <span class="nc">View</span><span class="o">.</span><span class="na">sUseZeroUnspecifiedMeasureSpec</span> <span class="o">?</span> <span class="mi">0</span> <span class="o">:</span> <span class="n">size</span><span class="o">;</span>
+            <span class="n">resultMode</span> <span class="o">=</span> <span class="nc">MeasureSpec</span><span class="o">.</span><span class="na">UNSPECIFIED</span><span class="o">;</span>
+        <span class="o">}</span>
+        <span class="k">break</span><span class="o">;</span>
+    <span class="o">}</span>
+    <span class="c1">//最后根据的出来的模式和大小 , 返回一个规格</span>
+    <span class="k">return</span> <span class="nc">MeasureSpec</span><span class="o">.</span><span class="na">makeMeasureSpec</span><span class="o">(</span><span class="n">resultSize</span><span class="o">,</span> <span class="n">resultMode</span><span class="o">);</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>注释中已经写的很清楚了.</p>
+:ET

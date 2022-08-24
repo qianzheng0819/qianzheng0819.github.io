@@ -1,0 +1,70 @@
+I"�<p>bugly上有oom导致的崩溃，所以花时间做一次内存方面的优化。</p>
+
+<p>首页用android profile工具把内存dump下来获取到hprof文件，然后用mat工具来分析。</p>
+
+<h3 id="从内存泄漏开始">从内存泄漏开始</h3>
+
+<p><img src="/assets/images/2021-pic/p7.png" alt="p" />   <br />
+<br /></p>
+
+<p>我把自己的程序乱点了一通，可以看到有9个页面存在泄漏问题。让我们一个一个分析。 <br />
+<br /></p>
+
+<h4 id="泄漏一">泄漏一</h4>
+<p><br /></p>
+
+<p><img src="/assets/images/2021-pic/p8.png" alt="p" /></p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">public</span> <span class="kd">abstract</span> <span class="kd">class</span> <span class="nc">BaseFaceRecognitionFragment</span> <span class="kd">extends</span> <span class="nc">BaseV4Fragment</span> <span class="o">{</span>
+    <span class="kd">private</span> <span class="nc">AutoFitTextureView</span> <span class="n">previewView</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="nc">AutoFitTextureView</span> <span class="n">faceView</span><span class="o">;</span>
+    <span class="kt">int</span> <span class="n">mWidth</span> <span class="o">=</span> <span class="mi">640</span><span class="o">;</span>
+    <span class="kt">int</span> <span class="n">mHeight</span> <span class="o">=</span> <span class="mi">480</span><span class="o">;</span>
+    <span class="nc">Paint</span> <span class="n">mFacePaintWhite</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">Paint</span><span class="o">();</span></code></pre></figure>
+
+<p>原因：fragment销毁时，TextureView未置为null。该对象持有匿名内部类的listener,
+匿名内部类持有外部类对象是基本的java知识。从后面的例子中我们也会发现，大多数
+activity泄漏的原因都和匿名内部类有关系。<br />
+<br />
+解决：fragment销毁时，TextureView置为null  <br />
+<br />
+<br /></p>
+
+<h4 id="泄漏二">泄漏二</h4>
+
+<p><img src="/assets/images/2021-pic/p9.png" alt="p" /></p>
+
+<p>原因：同上，也是因为匿名内部类的listener导致<br />
+<br />
+解决：videoListActivity销毁时，mAdapter和refreshLayout置为null <br />
+<br />
+<br /></p>
+<h4 id="泄漏三">泄漏三</h4>
+
+<p><img src="/assets/images/2021-pic/p10.png" alt="p" /></p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="k">try</span> <span class="o">{</span>
+   <span class="c1">// api22的linkedlist的poll方法在链表为空时，会抛出空指针异常和noelement异常，高版本的linkedlist无此问题</span>
+   <span class="k">while</span> <span class="o">((</span><span class="nc">ComData</span> <span class="o">=</span> <span class="nc">QueueList</span><span class="o">.</span><span class="na">poll</span><span class="o">())</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+       <span class="n">mActivity</span><span class="o">.</span><span class="na">runOnUiThread</span><span class="o">(</span><span class="k">new</span> <span class="nc">Runnable</span><span class="o">()</span> <span class="o">{</span>
+           <span class="kd">public</span> <span class="kt">void</span> <span class="nf">run</span><span class="o">()</span> <span class="o">{</span>
+               <span class="n">getCardNum</span><span class="o">(</span><span class="nc">ComData</span><span class="o">);</span>
+           <span class="o">}</span>
+       <span class="o">});</span>
+       <span class="k">try</span> <span class="o">{</span>
+           <span class="nc">Thread</span><span class="o">.</span><span class="na">sleep</span><span class="o">(</span><span class="mi">100</span><span class="o">);</span><span class="c1">//显示性能高的话，可以把此数值调小。</span>
+       <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">Exception</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+           <span class="n">e</span><span class="o">.</span><span class="na">printStackTrace</span><span class="o">();</span>
+       <span class="o">}</span>
+       <span class="k">break</span><span class="o">;</span>
+   <span class="o">}</span></code></pre></figure>
+
+<p>原因：阻塞循环里引用activity，代码写的很丑陋，不知道是谁写的 <br />
+<br />
+解决：删掉mActivity，用handler来通知主线程更新
+<br />
+<br /></p>
+
+<h4 id="泄漏四">泄漏四</h4>
+<p><br /></p>
+:ET

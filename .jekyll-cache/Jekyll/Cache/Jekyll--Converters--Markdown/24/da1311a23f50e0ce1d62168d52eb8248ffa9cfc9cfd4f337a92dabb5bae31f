@@ -1,0 +1,134 @@
+I"B5<h3 id="前言">前言</h3>
+<p>未来一年重点学习音视频的知识。ffmpeg的编译需要非常熟悉脚本，正好用ubuntu的/etc/profile来学习积累。   <br />
+/etc/profile文件我们都熟悉，系统login后会调用这个文件，主要是读取系统变量。脚本里还会调用/.bashrc等脚本。</p>
+
+<h3 id="源码">源码</h3>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><span class="cp"># /etc/profile: system-wide .profile file for the Bourne shell (sh(1))
+# and Bourne compatible shells (bash(1), ksh(1), ash(1), ...).
+</span>
+<span class="k">if</span> <span class="p">[</span> <span class="s">"${PS1-}"</span> <span class="p">];</span> <span class="n">then</span>
+  <span class="k">if</span> <span class="p">[</span> <span class="s">"${BASH-}"</span> <span class="p">]</span> <span class="o">&amp;&amp;</span> <span class="p">[</span> <span class="s">"$BASH"</span> <span class="o">!=</span> <span class="s">"/bin/sh"</span> <span class="p">];</span> <span class="n">then</span>
+    <span class="cp"># The file bash.bashrc already sets the default PS1.
+</span>    <span class="cp"># PS1='\h:\w\$ '
+</span>    <span class="k">if</span> <span class="p">[</span> <span class="o">-</span><span class="n">f</span> <span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">bash</span><span class="p">.</span><span class="n">bashrc</span> <span class="p">];</span> <span class="n">then</span>
+      <span class="p">.</span> <span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">bash</span><span class="p">.</span><span class="n">bashrc</span>
+    <span class="n">fi</span>
+  <span class="k">else</span>
+    <span class="k">if</span> <span class="p">[</span> <span class="s">"$(id -u)"</span> <span class="o">-</span><span class="n">eq</span> <span class="mi">0</span> <span class="p">];</span> <span class="n">then</span>
+      <span class="n">PS1</span><span class="o">=</span><span class="err">'#</span> <span class="err">'</span>
+    <span class="k">else</span>
+      <span class="n">PS1</span><span class="o">=</span><span class="err">'$</span> <span class="err">'</span>
+    <span class="n">fi</span>
+  <span class="n">fi</span>
+<span class="n">fi</span>
+
+<span class="k">if</span> <span class="p">[</span> <span class="o">-</span><span class="n">d</span> <span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">profile</span><span class="p">.</span><span class="n">d</span> <span class="p">];</span> <span class="n">then</span>
+  <span class="k">for</span> <span class="n">i</span> <span class="n">in</span> <span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">profile</span><span class="p">.</span><span class="n">d</span><span class="o">/*</span><span class="p">.</span><span class="n">sh</span><span class="p">;</span> <span class="k">do</span>
+    <span class="k">if</span> <span class="p">[</span> <span class="o">-</span><span class="n">r</span> <span class="err">$</span><span class="n">i</span> <span class="p">];</span> <span class="n">then</span>
+      <span class="p">.</span> <span class="err">$</span><span class="n">i</span>
+    <span class="n">fi</span>
+  <span class="n">done</span>
+  <span class="n">unset</span> <span class="n">i</span>
+<span class="n">fi</span></code></pre></figure>
+
+<p>第一句就难到了我，”${PS1-}”是啥意思，google一下  <br />
+The variable expansion ${parameter:-word} will use the value of $parameter if it’s set and non-null (not an empty string), otherwise it will use the string word.</p>
+
+<p>Omitting the : will not test if the value is empty, only whether it’s unset or not.</p>
+
+<p>This means that ${PS1-} will expand to the value of $PS1 if it’s set, but to an empty string if it’s empty or unset. In this case, this is exactly the same as ${PS1:-} as the string after - is also empty.</p>
+
+<p>讲的很清晰，PS1如果有被set就取值$PS1，否则为空值。那么ubuntu里的PS1是啥子玩意。</p>
+
+<p><strong>PS1</strong> - The value of this parameter is expanded and used as the primary prompt string. The default value is \u@\h \W\$ .</p>
+
+<p>\u = username   <br />
+\h = hostname  <br />
+\W = current working directory</p>
+
+<p>PS就是prompt string的缩写，就是终端里的用户名@主机：当前路径。</p>
+
+<p>接着往下看BASH的值，echo $BASH</p>
+<blockquote>
+  <p>/usr/bin/bash</p>
+</blockquote>
+
+<p>-f /etc/bash.bashrc -f是文件测试操作，文件是常规文件(regular file)，而非目录或 设备文件。</p>
+
+<p>查看我们的系统，是有这个文件的，内容如下。</p>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><span class="cp"># System-wide .bashrc file for interactive bash(1) shells.
+</span>
+<span class="cp"># To enable the settings / commands in this file for login shells as well,
+# this file has to be sourced in /etc/profile.
+</span>
+<span class="cp"># If not running interactively, don't do anything
+</span><span class="p">[</span> <span class="o">-</span><span class="n">z</span> <span class="s">"$PS1"</span> <span class="p">]</span> <span class="o">&amp;&amp;</span> <span class="k">return</span>
+
+<span class="cp"># check the window size after each command and, if necessary,
+# update the values of LINES and COLUMNS.
+</span><span class="n">shopt</span> <span class="o">-</span><span class="n">s</span> <span class="n">checkwinsize</span>
+
+<span class="cp"># set variable identifying the chroot you work in (used in the prompt below)
+</span><span class="k">if</span> <span class="p">[</span> <span class="o">-</span><span class="n">z</span> <span class="s">"${debian_chroot:-}"</span> <span class="p">]</span> <span class="o">&amp;&amp;</span> <span class="p">[</span> <span class="o">-</span><span class="n">r</span> <span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">debian_chroot</span> <span class="p">];</span> <span class="n">then</span>
+    <span class="n">debian_chroot</span><span class="o">=</span><span class="err">$</span><span class="p">(</span><span class="n">cat</span> <span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">debian_chroot</span><span class="p">)</span>
+<span class="n">fi</span>
+
+<span class="cp"># set a fancy prompt (non-color, overwrite the one in /etc/profile)
+# but only if not SUDOing and have SUDO_PS1 set; then assume smart user.
+</span><span class="k">if</span> <span class="o">!</span> <span class="p">[</span> <span class="o">-</span><span class="n">n</span> <span class="s">"${SUDO_USER}"</span> <span class="o">-</span><span class="n">a</span> <span class="o">-</span><span class="n">n</span> <span class="s">"${SUDO_PS1}"</span> <span class="p">];</span> <span class="n">then</span>
+  <span class="n">PS1</span><span class="o">=</span><span class="err">'$</span><span class="p">{</span><span class="n">debian_chroot</span><span class="o">:+</span><span class="p">(</span><span class="err">$</span><span class="n">debian_chroot</span><span class="p">)}</span><span class="err">\</span><span class="n">u</span><span class="err">@\</span><span class="n">h</span><span class="o">:</span><span class="err">\</span><span class="n">w</span><span class="err">\$</span> <span class="err">'</span>
+<span class="n">fi</span>
+
+<span class="cp"># Commented out, don't overwrite xterm -T "title" -n "icontitle" by default.
+# If this is an xterm set the title to user@host:dir
+#case "$TERM" in
+#xterm*|rxvt*)
+#    PROMPT_COMMAND='echo -ne "\033]0;${USER}@${HOSTNAME}: ${PWD}\007"'
+#    ;;
+#*)
+#    ;;
+#esac
+</span>
+<span class="cp"># enable bash completion in interactive shells
+#if ! shopt -oq posix; then
+#  if [ -f /usr/share/bash-completion/bash_completion ]; then
+#    . /usr/share/bash-completion/bash_completion
+#  elif [ -f /etc/bash_completion ]; then
+#    . /etc/bash_completion
+#  fi
+#fi
+</span>
+<span class="cp"># sudo hint
+</span><span class="k">if</span> <span class="p">[</span> <span class="o">!</span> <span class="o">-</span><span class="n">e</span> <span class="s">"$HOME/.sudo_as_admin_successful"</span> <span class="p">]</span> <span class="o">&amp;&amp;</span> <span class="p">[</span> <span class="o">!</span> <span class="o">-</span><span class="n">e</span> <span class="s">"$HOME/.hushlogin"</span> <span class="p">]</span> <span class="p">;</span> <span class="n">then</span>
+    <span class="k">case</span> <span class="s">" $(groups) "</span> <span class="n">in</span> <span class="o">*</span><span class="err">\</span> <span class="n">admin</span><span class="err">\</span> <span class="o">*|*</span><span class="err">\</span> <span class="n">sudo</span><span class="err">\</span> <span class="o">*</span><span class="p">)</span>
+    <span class="k">if</span> <span class="p">[</span> <span class="o">-</span><span class="n">x</span> <span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">sudo</span> <span class="p">];</span> <span class="n">then</span>
+	<span class="n">cat</span> <span class="o">&lt;&lt;-</span><span class="n">EOF</span>
+	<span class="n">To</span> <span class="n">run</span> <span class="n">a</span> <span class="n">command</span> <span class="n">as</span> <span class="n">administrator</span> <span class="p">(</span><span class="n">user</span> <span class="s">"root"</span><span class="p">),</span> <span class="n">use</span> <span class="s">"sudo &lt;command&gt;"</span><span class="p">.</span>
+	<span class="n">See</span> <span class="s">"man sudo_root"</span> <span class="k">for</span> <span class="n">details</span><span class="p">.</span>
+
+	<span class="n">EOF</span>
+    <span class="n">fi</span>
+    <span class="n">esac</span>
+<span class="n">fi</span>
+
+<span class="cp"># if the command-not-found package is installed, use it
+</span><span class="k">if</span> <span class="p">[</span> <span class="o">-</span><span class="n">x</span> <span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">command</span><span class="o">-</span><span class="n">not</span><span class="o">-</span><span class="n">found</span> <span class="o">-</span><span class="n">o</span> <span class="o">-</span><span class="n">x</span> <span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">share</span><span class="o">/</span><span class="n">command</span><span class="o">-</span><span class="n">not</span><span class="o">-</span><span class="n">found</span><span class="o">/</span><span class="n">command</span><span class="o">-</span><span class="n">not</span><span class="o">-</span><span class="n">found</span> <span class="p">];</span> <span class="n">then</span>
+	<span class="n">function</span> <span class="n">command_not_found_handle</span> <span class="err">{</span>
+	        <span class="cp"># check because c-n-f could've been removed in the meantime
+</span>                <span class="k">if</span> <span class="p">[</span> <span class="o">-</span><span class="n">x</span> <span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">command</span><span class="o">-</span><span class="n">not</span><span class="o">-</span><span class="n">found</span> <span class="p">];</span> <span class="n">then</span>
+		   <span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">command</span><span class="o">-</span><span class="n">not</span><span class="o">-</span><span class="n">found</span> <span class="o">--</span> <span class="s">"$1"</span>
+                   <span class="k">return</span> <span class="err">$</span><span class="o">?</span>
+                <span class="n">elif</span> <span class="p">[</span> <span class="o">-</span><span class="n">x</span> <span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">share</span><span class="o">/</span><span class="n">command</span><span class="o">-</span><span class="n">not</span><span class="o">-</span><span class="n">found</span><span class="o">/</span><span class="n">command</span><span class="o">-</span><span class="n">not</span><span class="o">-</span><span class="n">found</span> <span class="p">];</span> <span class="n">then</span>
+		   <span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">share</span><span class="o">/</span><span class="n">command</span><span class="o">-</span><span class="n">not</span><span class="o">-</span><span class="n">found</span><span class="o">/</span><span class="n">command</span><span class="o">-</span><span class="n">not</span><span class="o">-</span><span class="n">found</span> <span class="o">--</span> <span class="s">"$1"</span>
+                   <span class="k">return</span> <span class="err">$</span><span class="o">?</span>
+		<span class="k">else</span>
+		   <span class="n">printf</span> <span class="s">"%s: command not found</span><span class="se">\n</span><span class="s">"</span> <span class="s">"$1"</span> <span class="o">&gt;&amp;</span><span class="mi">2</span>
+		   <span class="k">return</span> <span class="mi">127</span>
+		<span class="n">fi</span>
+	<span class="err">}</span>
+<span class="n">fi</span></code></pre></figure>
+
+<p>代码里主要是对字符串或者文件的测试操作，比如-z,-n,-e,-x等等。基本上一看就懂了，就不详解了。</p>
+:ET

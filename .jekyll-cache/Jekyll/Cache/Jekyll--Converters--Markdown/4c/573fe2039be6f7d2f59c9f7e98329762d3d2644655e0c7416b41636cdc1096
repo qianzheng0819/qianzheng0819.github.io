@@ -1,0 +1,4 @@
+I"<h3 id="前言">前言</h3>
+<p>这不是一个教学贴，更多是一个研究源码的笔记博客。    <br />
+这段时间主要研究基于miracast的wifi-display实现。miracast分source端和sink端，现在的手机一般都内置了source端。</p>
+:ET

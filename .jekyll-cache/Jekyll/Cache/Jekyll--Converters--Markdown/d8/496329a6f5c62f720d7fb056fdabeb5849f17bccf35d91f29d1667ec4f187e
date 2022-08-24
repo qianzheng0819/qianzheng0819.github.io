@@ -1,0 +1,4 @@
+I"�<h3 id="前言"><strong>前言</strong></h3>
+<p>scrollview的核心是Scroller类，还有View的draw()方法里调用的computeScroll()方法。一般在自定义控件里使用Scroller类时，都要配合重写
+View的computeScroll()方法。下面我们分析一下ScrollView这个官方自定义控件实现的具体代码。本文源码使用android2.3.7版本，低版本的代码结构简单，方便分析。</p>
+:ET

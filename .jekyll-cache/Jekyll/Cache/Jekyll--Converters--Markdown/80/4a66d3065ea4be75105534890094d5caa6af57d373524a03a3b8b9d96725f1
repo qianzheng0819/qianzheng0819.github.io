@@ -1,0 +1,160 @@
+I"G<p>一.获取Service Manager的Java远程接口
+关键代码是ServiceManagerNative.asInterface(BinderInternal.getContextObject())
+中间源码分析比较简单省略，直接记录关键点。BinderInternal.getContextObject()相当于
+new BinderProxy(),该proxy的field mObject记录了c++层的BpBinder(0);c++层的BpBinder,
+BBinder,binder驱动之间的关系以前已经探讨过，这里不再写。</p>
+
+<p>二.HelloService的启动过程
+该HelloService的demo在老罗博客里有，该博客也主要是记录老罗博客的关键点，方便我自己
+记忆。HelloService在SystemServer.java里启动ServerThread启动起来，其他的常见framework
+层java服务如Ams,Wms也是在这里启动起来。
+new HelloService();这个语句会调用HelloService类的构造函数，而HelloService类继承于IHelloService.Stub类，IHelloService.Stub类又继承了Binder类，因此，最后会调用Binder类的构造函数：</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">public</span> <span class="kd">class</span> <span class="nc">Binder</span> <span class="kd">implements</span> <span class="nc">IBinder</span> <span class="o">{</span>
+<span class="o">......</span>
+
+<span class="kd">private</span> <span class="kt">int</span> <span class="n">mObject</span><span class="o">;</span>
+
+<span class="o">......</span>
+
+
+<span class="kd">public</span> <span class="nf">Binder</span><span class="o">()</span> <span class="o">{</span>
+  <span class="n">init</span><span class="o">();</span>
+  <span class="o">......</span>
+<span class="o">}</span>
+
+
+<span class="kd">private</span> <span class="kd">native</span> <span class="kd">final</span> <span class="kt">void</span> <span class="nf">init</span><span class="o">();</span>
+
+
+<span class="o">......</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>这里调用了一个JNI方法init来初始化这个Binder对象：</p>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><span class="k">static</span> <span class="kt">void</span> <span class="nf">android_os_Binder_init</span><span class="p">(</span><span class="n">JNIEnv</span><span class="o">*</span> <span class="n">env</span><span class="p">,</span> <span class="n">jobject</span> <span class="n">clazz</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">JavaBBinderHolder</span><span class="o">*</span> <span class="n">jbh</span> <span class="o">=</span> <span class="n">new</span> <span class="n">JavaBBinderHolder</span><span class="p">(</span><span class="n">env</span><span class="p">,</span> <span class="n">clazz</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">jbh</span> <span class="o">==</span> <span class="nb">NULL</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">jniThrowException</span><span class="p">(</span><span class="n">env</span><span class="p">,</span> <span class="s">"java/lang/OutOfMemoryError"</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">);</span>
+        <span class="k">return</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="n">LOGV</span><span class="p">(</span><span class="s">"Java Binder %p: acquiring first ref on holder %p"</span><span class="p">,</span> <span class="n">clazz</span><span class="p">,</span> <span class="n">jbh</span><span class="p">);</span>
+    <span class="n">jbh</span><span class="o">-&gt;</span><span class="n">incStrong</span><span class="p">(</span><span class="n">clazz</span><span class="p">);</span>
+    <span class="n">env</span><span class="o">-&gt;</span><span class="n">SetIntField</span><span class="p">(</span><span class="n">clazz</span><span class="p">,</span> <span class="n">gBinderOffsets</span><span class="p">.</span><span class="n">mObject</span><span class="p">,</span> <span class="p">(</span><span class="kt">int</span><span class="p">)</span><span class="n">jbh</span><span class="p">);</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>JavaBBinderHolder这个对象就是在java和c++中切换的一个Holder，holder构造函数传入了clazz,其中clazz就是我们的关键service。后面通过ibinderForJavaObject操作holder把java端服务binder转换为c++端JavaBBinder</p>
+
+<p>三. Client获取HelloService的Java远程接口的过程</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="n">helloService</span> <span class="o">=</span> <span class="nc">IHelloService</span><span class="o">.</span><span class="na">Stub</span><span class="o">.</span><span class="na">asInterface</span><span class="o">(</span>  
+         <span class="nc">ServiceManager</span><span class="o">.</span><span class="na">getService</span><span class="o">(</span><span class="s">"hello"</span><span class="o">));</span></code></pre></figure>
+
+<p>相当于</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"> <span class="n">helloService</span> <span class="o">=</span> <span class="nc">IHelloService</span><span class="o">.</span><span class="na">Stub</span><span class="o">.</span><span class="na">asInterface</span><span class="o">(</span><span class="k">new</span> <span class="nc">BinderProxy</span><span class="o">()));</span>
+ <span class="c1">// BinderProxy的mObject记录了BpBinder(handler),handler就是对应服务的底层句柄</span>
+ </code></pre></figure>
+
+<p>BinderProxy.transact函数是一个JNI方法，我们在前面已经介绍过了，这里不再累述。最过调用到Binder驱动程序，Binder驱动程序唤醒HelloService这个Server。前面我们在介绍HelloService的启动过程时，曾经提到，HelloService这个Server线程被唤醒之后，就会调用JavaBBinder类的onTransact函数：</p>
+
+<figure class="highlight"><pre><code class="language-c--" data-lang="c++"> <span class="k">class</span> <span class="nc">JavaBBinder</span> <span class="o">:</span> <span class="k">public</span> <span class="n">BBinder</span>
+ <span class="p">{</span>
+ 	<span class="n">JavaBBinder</span><span class="p">(</span><span class="n">JNIEnv</span><span class="o">*</span> <span class="n">env</span><span class="p">,</span> <span class="n">jobject</span> <span class="n">object</span><span class="p">)</span>
+ 		<span class="o">:</span> <span class="n">mVM</span><span class="p">(</span><span class="n">jnienv_to_javavm</span><span class="p">(</span><span class="n">env</span><span class="p">)),</span> <span class="n">mObject</span><span class="p">(</span><span class="n">env</span><span class="o">-&gt;</span><span class="n">NewGlobalRef</span><span class="p">(</span><span class="n">object</span><span class="p">))</span>
+ 	<span class="p">{</span>
+ 		<span class="p">......</span>
+ 	<span class="p">}</span>
+
+ 	<span class="p">......</span>
+
+ 	<span class="k">virtual</span> <span class="n">status_t</span> <span class="n">onTransact</span><span class="p">(</span>
+ 		<span class="kt">uint32_t</span> <span class="n">code</span><span class="p">,</span> <span class="k">const</span> <span class="n">Parcel</span><span class="o">&amp;</span> <span class="n">data</span><span class="p">,</span> <span class="n">Parcel</span><span class="o">*</span> <span class="n">reply</span><span class="p">,</span> <span class="kt">uint32_t</span> <span class="n">flags</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span>
+ 	<span class="p">{</span>
+ 		<span class="n">JNIEnv</span><span class="o">*</span> <span class="n">env</span> <span class="o">=</span> <span class="n">javavm_to_jnienv</span><span class="p">(</span><span class="n">mVM</span><span class="p">);</span>
+
+ 		<span class="p">......</span>
+
+ 		<span class="n">jboolean</span> <span class="n">res</span> <span class="o">=</span> <span class="n">env</span><span class="o">-&gt;</span><span class="n">CallBooleanMethod</span><span class="p">(</span><span class="n">mObject</span><span class="p">,</span> <span class="n">gBinderOffsets</span><span class="p">.</span><span class="n">mExecTransact</span><span class="p">,</span>
+ 			<span class="n">code</span><span class="p">,</span> <span class="p">(</span><span class="kt">int32_t</span><span class="p">)</span><span class="o">&amp;</span><span class="n">data</span><span class="p">,</span> <span class="p">(</span><span class="kt">int32_t</span><span class="p">)</span><span class="n">reply</span><span class="p">,</span> <span class="n">flags</span><span class="p">);</span>
+
+ 		<span class="p">......</span>
+
+ 		<span class="k">return</span> <span class="n">res</span> <span class="o">!=</span> <span class="n">JNI_FALSE</span> <span class="o">?</span> <span class="n">NO_ERROR</span> <span class="o">:</span> <span class="n">UNKNOWN_TRANSACTION</span><span class="p">;</span>
+ 	<span class="p">}</span>
+
+ 	<span class="p">......</span>
+
+         <span class="n">JavaVM</span><span class="o">*</span> <span class="k">const</span>   <span class="n">mVM</span><span class="p">;</span>
+ 	<span class="n">jobject</span> <span class="k">const</span>   <span class="n">mObject</span><span class="p">;</span>
+ <span class="p">};</span>
+ </code></pre></figure>
+
+<p>前面我们在介绍HelloService的启动过程时，曾经介绍过，JavaBBinder类里面的成员变量mObject就是HelloService类的一个实例对象了。因此，这里通过语句：</p>
+
+<figure class="highlight"><pre><code class="language-c--" data-lang="c++"> <span class="n">jboolean</span> <span class="n">res</span> <span class="o">=</span> <span class="n">env</span><span class="o">-&gt;</span><span class="n">CallBooleanMethod</span><span class="p">(</span><span class="n">mObject</span><span class="p">,</span> <span class="n">gBinderOffsets</span><span class="p">.</span><span class="n">mExecTransact</span><span class="p">,</span>
+			<span class="n">code</span><span class="p">,</span> <span class="p">(</span><span class="kt">int32_t</span><span class="p">)</span><span class="o">&amp;</span><span class="n">data</span><span class="p">,</span> <span class="p">(</span><span class="kt">int32_t</span><span class="p">)</span><span class="n">reply</span><span class="p">,</span> <span class="n">flags</span><span class="p">);</span>
+ </code></pre></figure>
+
+<p>就调用了HelloService.execTransact函数，而HelloService.execTransact函数继承了Binder类的execTransact函数：</p>
+
+<figure class="highlight"><pre><code class="language-c--" data-lang="c++"><span class="k">public</span> <span class="k">class</span> <span class="nc">Binder</span> <span class="n">implements</span> <span class="n">IBinder</span> <span class="p">{</span>
+	<span class="p">......</span>
+
+	<span class="c1">// Entry point from android_util_Binder.cpp's onTransact</span>
+	<span class="k">private</span> <span class="n">boolean</span> <span class="n">execTransact</span><span class="p">(</span><span class="kt">int</span> <span class="n">code</span><span class="p">,</span> <span class="kt">int</span> <span class="n">dataObj</span><span class="p">,</span> <span class="kt">int</span> <span class="n">replyObj</span><span class="p">,</span> <span class="kt">int</span> <span class="n">flags</span><span class="p">)</span> <span class="p">{</span>
+		<span class="n">Parcel</span> <span class="n">data</span> <span class="o">=</span> <span class="n">Parcel</span><span class="p">.</span><span class="n">obtain</span><span class="p">(</span><span class="n">dataObj</span><span class="p">);</span>
+		<span class="n">Parcel</span> <span class="n">reply</span> <span class="o">=</span> <span class="n">Parcel</span><span class="p">.</span><span class="n">obtain</span><span class="p">(</span><span class="n">replyObj</span><span class="p">);</span>
+		<span class="c1">// theoretically, we should call transact, which will call onTransact,</span>
+		<span class="c1">// but all that does is rewind it, and we just got these from an IPC,</span>
+		<span class="c1">// so we'll just call it directly.</span>
+		<span class="n">boolean</span> <span class="n">res</span><span class="p">;</span>
+		<span class="k">try</span> <span class="p">{</span>
+			<span class="n">res</span> <span class="o">=</span> <span class="n">onTransact</span><span class="p">(</span><span class="n">code</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">reply</span><span class="p">,</span> <span class="n">flags</span><span class="p">);</span>
+		<span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="n">RemoteException</span> <span class="n">e</span><span class="p">)</span> <span class="p">{</span>
+			<span class="n">reply</span><span class="p">.</span><span class="n">writeException</span><span class="p">(</span><span class="n">e</span><span class="p">);</span>
+			<span class="n">res</span> <span class="o">=</span> <span class="nb">true</span><span class="p">;</span>
+		<span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="n">RuntimeException</span> <span class="n">e</span><span class="p">)</span> <span class="p">{</span>
+			<span class="n">reply</span><span class="p">.</span><span class="n">writeException</span><span class="p">(</span><span class="n">e</span><span class="p">);</span>
+			<span class="n">res</span> <span class="o">=</span> <span class="nb">true</span><span class="p">;</span>
+		<span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="n">OutOfMemoryError</span> <span class="n">e</span><span class="p">)</span> <span class="p">{</span>
+			<span class="n">RuntimeException</span> <span class="n">re</span> <span class="o">=</span> <span class="k">new</span> <span class="n">RuntimeException</span><span class="p">(</span><span class="s">"Out of memory"</span><span class="p">,</span> <span class="n">e</span><span class="p">);</span>
+			<span class="n">reply</span><span class="p">.</span><span class="n">writeException</span><span class="p">(</span><span class="n">re</span><span class="p">);</span>
+			<span class="n">res</span> <span class="o">=</span> <span class="nb">true</span><span class="p">;</span>
+		<span class="p">}</span>
+		<span class="n">reply</span><span class="p">.</span><span class="n">recycle</span><span class="p">();</span>
+		<span class="n">data</span><span class="p">.</span><span class="n">recycle</span><span class="p">();</span>
+		<span class="k">return</span> <span class="n">res</span><span class="p">;</span>
+	<span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>这里又调用了onTransact函数来作进一步处理。由于HelloService类继承了IHelloService.Stub类，而IHelloService.Stub类实现了onTransact函数，HelloService类没有实现，因此，最终调用了IHelloService.Stub.onTransact函数：</p>
+
+<figure class="highlight"><pre><code class="language-c--" data-lang="c++"><span class="k">public</span> <span class="n">interface</span> <span class="n">IHelloService</span> <span class="n">extends</span> <span class="n">android</span><span class="p">.</span><span class="n">os</span><span class="p">.</span><span class="n">IInterface</span>
+<span class="p">{</span>
+	<span class="k">public</span> <span class="k">static</span> <span class="n">abstract</span> <span class="k">class</span> <span class="nc">Stub</span> <span class="n">extends</span> <span class="n">android</span><span class="p">.</span><span class="n">os</span><span class="p">.</span><span class="n">Binder</span> <span class="n">implements</span> <span class="n">android</span><span class="p">.</span><span class="n">os</span><span class="p">.</span><span class="n">IHelloService</span>
+	<span class="p">{</span>
+		<span class="k">public</span> <span class="n">boolean</span> <span class="n">onTransact</span><span class="p">(</span><span class="kt">int</span> <span class="n">code</span><span class="p">,</span> <span class="n">android</span><span class="p">.</span><span class="n">os</span><span class="p">.</span><span class="n">Parcel</span> <span class="n">data</span><span class="p">,</span> <span class="n">android</span><span class="p">.</span><span class="n">os</span><span class="p">.</span><span class="n">Parcel</span> <span class="n">reply</span><span class="p">,</span> <span class="kt">int</span> <span class="n">flags</span><span class="p">)</span> <span class="k">throws</span> <span class="n">android</span><span class="p">.</span><span class="n">os</span><span class="p">.</span><span class="n">RemoteException</span>
+		<span class="p">{</span>
+			<span class="k">switch</span> <span class="p">(</span><span class="n">code</span><span class="p">)</span>
+			<span class="p">{</span>
+			<span class="p">......</span>
+			<span class="k">case</span> <span class="n">TRANSACTION_getVal</span><span class="p">:</span>
+				<span class="p">{</span>
+					<span class="n">data</span><span class="p">.</span><span class="n">enforceInterface</span><span class="p">(</span><span class="n">DESCRIPTOR</span><span class="p">);</span>
+					<span class="kt">int</span> <span class="n">result</span> <span class="o">=</span> <span class="k">this</span><span class="p">.</span><span class="n">getVal</span><span class="p">();</span>
+					<span class="n">reply</span><span class="p">.</span><span class="n">writeNoException</span><span class="p">();</span>
+					<span class="n">reply</span><span class="p">.</span><span class="n">writeInt</span><span class="p">(</span><span class="n">result</span><span class="p">);</span>
+					<span class="k">return</span> <span class="nb">true</span><span class="p">;</span>
+				<span class="p">}</span>
+			<span class="p">}</span>
+			<span class="k">return</span> <span class="n">super</span><span class="p">.</span><span class="n">onTransact</span><span class="p">(</span><span class="n">code</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">reply</span><span class="p">,</span> <span class="n">flags</span><span class="p">);</span>
+		<span class="p">}</span>
+
+		<span class="p">......</span>
+
+	<span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+:ET

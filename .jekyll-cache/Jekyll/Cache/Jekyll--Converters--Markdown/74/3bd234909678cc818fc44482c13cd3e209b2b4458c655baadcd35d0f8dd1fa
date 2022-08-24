@@ -1,0 +1,381 @@
+I"��<p>花了一个下午时间看了下listview的源码，也有参考他人博客来指导思路。学习就是这样，能够化外物为己用是上上法，毕竟研究一个未知领域
+是很耗费时间的。现在来分析一下listview源码，看它是如何运作起来的。这篇博客过后，可能会开始学习前端web的知识，关于android源码的分析
+会暂时停下。</p>
+
+<p>读过ViewRootImpl的performTransvers源码的同学都知道，一个view至少会经历两次measure和layout的过程。而我们的listview由于要加载较多
+的view,所以对两次layout是做了优化的。</p>
+
+<h3 id="第一次layout">第一次layout</h3>
+<p>listview继承于AbsListView,看下其onLayout方法</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">protected</span> <span class="kt">void</span> <span class="nf">onLayout</span><span class="o">(</span><span class="kt">boolean</span> <span class="n">changed</span><span class="o">,</span> <span class="kt">int</span> <span class="n">l</span><span class="o">,</span> <span class="kt">int</span> <span class="n">t</span><span class="o">,</span> <span class="kt">int</span> <span class="n">r</span><span class="o">,</span> <span class="kt">int</span> <span class="n">b</span><span class="o">)</span> <span class="o">{</span>
+    <span class="kd">super</span><span class="o">.</span><span class="na">onLayout</span><span class="o">(</span><span class="n">changed</span><span class="o">,</span> <span class="n">l</span><span class="o">,</span> <span class="n">t</span><span class="o">,</span> <span class="n">r</span><span class="o">,</span> <span class="n">b</span><span class="o">);</span>
+    <span class="n">mInLayout</span> <span class="o">=</span> <span class="kc">true</span><span class="o">;</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">changed</span><span class="o">)</span> <span class="o">{</span>
+        <span class="kt">int</span> <span class="n">childCount</span> <span class="o">=</span> <span class="n">getChildCount</span><span class="o">();</span>
+        <span class="k">for</span> <span class="o">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">childCount</span><span class="o">;</span> <span class="n">i</span><span class="o">++)</span> <span class="o">{</span>
+            <span class="n">getChildAt</span><span class="o">(</span><span class="n">i</span><span class="o">).</span><span class="na">forceLayout</span><span class="o">();</span>
+        <span class="o">}</span>
+        <span class="n">mRecycler</span><span class="o">.</span><span class="na">markChildrenDirty</span><span class="o">();</span>
+    <span class="o">}</span>
+
+    <span class="n">layoutChildren</span><span class="o">();</span>
+    <span class="n">mInLayout</span> <span class="o">=</span> <span class="kc">false</span><span class="o">;</span>
+
+    <span class="n">mOverscrollMax</span> <span class="o">=</span> <span class="o">(</span><span class="n">b</span> <span class="o">-</span> <span class="n">t</span><span class="o">)</span> <span class="o">/</span> <span class="no">OVERSCROLL_LIMIT_DIVISOR</span><span class="o">;</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>接着看listview的layoutChildren()方法，只录了关键代码</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="k">if</span> <span class="o">(</span><span class="n">dataChanged</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">for</span> <span class="o">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">childCount</span><span class="o">;</span> <span class="n">i</span><span class="o">++)</span> <span class="o">{</span>
+            <span class="n">recycleBin</span><span class="o">.</span><span class="na">addScrapView</span><span class="o">(</span><span class="n">getChildAt</span><span class="o">(</span><span class="n">i</span><span class="o">));</span>
+            <span class="k">if</span> <span class="o">(</span><span class="nc">ViewDebug</span><span class="o">.</span><span class="na">TRACE_RECYCLER</span><span class="o">)</span> <span class="o">{</span>
+                <span class="nc">ViewDebug</span><span class="o">.</span><span class="na">trace</span><span class="o">(</span><span class="n">getChildAt</span><span class="o">(</span><span class="n">i</span><span class="o">),</span>
+                        <span class="nc">ViewDebug</span><span class="o">.</span><span class="na">RecyclerTraceType</span><span class="o">.</span><span class="na">MOVE_TO_SCRAP_HEAP</span><span class="o">,</span> <span class="n">index</span><span class="o">,</span> <span class="n">i</span><span class="o">);</span>
+            <span class="o">}</span>
+        <span class="o">}</span>
+    <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+        <span class="n">recycleBin</span><span class="o">.</span><span class="na">fillActiveViews</span><span class="o">(</span><span class="n">childCount</span><span class="o">,</span> <span class="n">firstPosition</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="c1">// take focus back to us temporarily to avoid the eventual</span>
+    <span class="c1">// call to clear focus when removing the focused child below</span>
+    <span class="c1">// from messing things up when ViewRoot assigns focus back</span>
+    <span class="c1">// to someone else</span>
+    <span class="kd">final</span> <span class="nc">View</span> <span class="n">focusedChild</span> <span class="o">=</span> <span class="n">getFocusedChild</span><span class="o">();</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">focusedChild</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+        <span class="c1">// TODO: in some cases focusedChild.getParent() == null</span>
+
+        <span class="c1">// we can remember the focused view to restore after relayout if the</span>
+        <span class="c1">// data hasn't changed, or if the focused position is a header or footer</span>
+        <span class="k">if</span> <span class="o">(!</span><span class="n">dataChanged</span> <span class="o">||</span> <span class="n">isDirectChildHeaderOrFooter</span><span class="o">(</span><span class="n">focusedChild</span><span class="o">))</span> <span class="o">{</span>
+            <span class="n">focusLayoutRestoreDirectChild</span> <span class="o">=</span> <span class="n">focusedChild</span><span class="o">;</span>
+            <span class="c1">// remember the specific view that had focus</span>
+            <span class="n">focusLayoutRestoreView</span> <span class="o">=</span> <span class="n">findFocus</span><span class="o">();</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">focusLayoutRestoreView</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+                <span class="c1">// tell it we are going to mess with it</span>
+                <span class="n">focusLayoutRestoreView</span><span class="o">.</span><span class="na">onStartTemporaryDetach</span><span class="o">();</span>
+            <span class="o">}</span>
+        <span class="o">}</span>
+        <span class="n">requestFocus</span><span class="o">();</span>
+    <span class="o">}</span>
+
+    <span class="c1">// Clear out old views</span>
+    <span class="n">detachAllViewsFromParent</span><span class="o">();</span>
+
+    <span class="k">switch</span> <span class="o">(</span><span class="n">mLayoutMode</span><span class="o">)</span> <span class="o">{</span>
+    <span class="o">....</span>
+    <span class="k">default</span><span class="o">:</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">childCount</span> <span class="o">==</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">if</span> <span class="o">(!</span><span class="n">mStackFromBottom</span><span class="o">)</span> <span class="o">{</span>
+                <span class="kd">final</span> <span class="kt">int</span> <span class="n">position</span> <span class="o">=</span> <span class="n">lookForSelectablePosition</span><span class="o">(</span><span class="mi">0</span><span class="o">,</span> <span class="kc">true</span><span class="o">);</span>
+                <span class="n">setSelectedPositionInt</span><span class="o">(</span><span class="n">position</span><span class="o">);</span>
+                <span class="n">sel</span> <span class="o">=</span> <span class="n">fillFromTop</span><span class="o">(</span><span class="n">childrenTop</span><span class="o">);</span>
+            <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+                <span class="kd">final</span> <span class="kt">int</span> <span class="n">position</span> <span class="o">=</span> <span class="n">lookForSelectablePosition</span><span class="o">(</span><span class="n">mItemCount</span> <span class="o">-</span> <span class="mi">1</span><span class="o">,</span> <span class="kc">false</span><span class="o">);</span>
+                <span class="n">setSelectedPositionInt</span><span class="o">(</span><span class="n">position</span><span class="o">);</span>
+                <span class="n">sel</span> <span class="o">=</span> <span class="n">fillUp</span><span class="o">(</span><span class="n">mItemCount</span> <span class="o">-</span> <span class="mi">1</span><span class="o">,</span> <span class="n">childrenBottom</span><span class="o">);</span>
+            <span class="o">}</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">mSelectedPosition</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="o">&amp;&amp;</span> <span class="n">mSelectedPosition</span> <span class="o">&lt;</span> <span class="n">mItemCount</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">sel</span> <span class="o">=</span> <span class="n">fillSpecific</span><span class="o">(</span><span class="n">mSelectedPosition</span><span class="o">,</span>
+                        <span class="n">oldSel</span> <span class="o">==</span> <span class="kc">null</span> <span class="o">?</span> <span class="n">childrenTop</span> <span class="o">:</span> <span class="n">oldSel</span><span class="o">.</span><span class="na">getTop</span><span class="o">());</span>
+            <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">mFirstPosition</span> <span class="o">&lt;</span> <span class="n">mItemCount</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">sel</span> <span class="o">=</span> <span class="n">fillSpecific</span><span class="o">(</span><span class="n">mFirstPosition</span><span class="o">,</span>
+                        <span class="n">oldFirst</span> <span class="o">==</span> <span class="kc">null</span> <span class="o">?</span> <span class="n">childrenTop</span> <span class="o">:</span> <span class="n">oldFirst</span><span class="o">.</span><span class="na">getTop</span><span class="o">());</span>
+            <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+                <span class="n">sel</span> <span class="o">=</span> <span class="n">fillSpecific</span><span class="o">(</span><span class="mi">0</span><span class="o">,</span> <span class="n">childrenTop</span><span class="o">);</span>
+            <span class="o">}</span>
+        <span class="o">}</span>
+        <span class="k">break</span><span class="o">;</span>
+    <span class="o">}</span></code></pre></figure>
+
+<p>dataChanged是标记数据源有变化，所以我们走recycleBin.fillActiveViews(childCount, firstPosition)。由于第一次layout，childCount=0,
+所以fillActiveViews并没有做事。detachAllViewsFromParent()同样的原因也不会干事，具体可以点进去看源码。 <br />
+第一次layout的关键代码是sel = fillFromTop(childrenTop)，我们点进去看一看。</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">private</span> <span class="nc">View</span> <span class="nf">fillFromTop</span><span class="o">(</span><span class="kt">int</span> <span class="n">nextTop</span><span class="o">)</span> <span class="o">{</span>
+    <span class="n">mFirstPosition</span> <span class="o">=</span> <span class="nc">Math</span><span class="o">.</span><span class="na">min</span><span class="o">(</span><span class="n">mFirstPosition</span><span class="o">,</span> <span class="n">mSelectedPosition</span><span class="o">);</span>
+    <span class="n">mFirstPosition</span> <span class="o">=</span> <span class="nc">Math</span><span class="o">.</span><span class="na">min</span><span class="o">(</span><span class="n">mFirstPosition</span><span class="o">,</span> <span class="n">mItemCount</span> <span class="o">-</span> <span class="mi">1</span><span class="o">);</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">mFirstPosition</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">mFirstPosition</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+    <span class="o">}</span>
+    <span class="k">return</span> <span class="nf">fillDown</span><span class="o">(</span><span class="n">mFirstPosition</span><span class="o">,</span> <span class="n">nextTop</span><span class="o">);</span>
+<span class="o">}</span>
+
+<span class="kd">private</span> <span class="nc">View</span> <span class="nf">fillDown</span><span class="o">(</span><span class="kt">int</span> <span class="n">pos</span><span class="o">,</span> <span class="kt">int</span> <span class="n">nextTop</span><span class="o">)</span> <span class="o">{</span>
+    <span class="nc">View</span> <span class="n">selectedView</span> <span class="o">=</span> <span class="kc">null</span><span class="o">;</span>
+
+    <span class="kt">int</span> <span class="n">end</span> <span class="o">=</span> <span class="o">(</span><span class="n">mBottom</span> <span class="o">-</span> <span class="n">mTop</span><span class="o">)</span> <span class="o">-</span> <span class="n">mListPadding</span><span class="o">.</span><span class="na">bottom</span><span class="o">;</span>
+
+    <span class="k">while</span> <span class="o">(</span><span class="n">nextTop</span> <span class="o">&lt;</span> <span class="n">end</span> <span class="o">&amp;&amp;</span> <span class="n">pos</span> <span class="o">&lt;</span> <span class="n">mItemCount</span><span class="o">)</span> <span class="o">{</span>
+        <span class="c1">// is this the selected item?</span>
+        <span class="kt">boolean</span> <span class="n">selected</span> <span class="o">=</span> <span class="n">pos</span> <span class="o">==</span> <span class="n">mSelectedPosition</span><span class="o">;</span>
+        <span class="nc">View</span> <span class="n">child</span> <span class="o">=</span> <span class="n">makeAndAddView</span><span class="o">(</span><span class="n">pos</span><span class="o">,</span> <span class="n">nextTop</span><span class="o">,</span> <span class="kc">true</span><span class="o">,</span> <span class="n">mListPadding</span><span class="o">.</span><span class="na">left</span><span class="o">,</span> <span class="n">selected</span><span class="o">);</span>
+
+        <span class="n">nextTop</span> <span class="o">=</span> <span class="n">child</span><span class="o">.</span><span class="na">getBottom</span><span class="o">()</span> <span class="o">+</span> <span class="n">mDividerHeight</span><span class="o">;</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">selected</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">selectedView</span> <span class="o">=</span> <span class="n">child</span><span class="o">;</span>
+        <span class="o">}</span>
+        <span class="n">pos</span><span class="o">++;</span>
+    <span class="o">}</span>
+
+    <span class="k">return</span> <span class="n">selectedView</span><span class="o">;</span>
+<span class="o">}</span>
+
+<span class="kd">private</span> <span class="nc">View</span> <span class="nf">makeAndAddView</span><span class="o">(</span><span class="kt">int</span> <span class="n">position</span><span class="o">,</span> <span class="kt">int</span> <span class="n">y</span><span class="o">,</span> <span class="kt">boolean</span> <span class="n">flow</span><span class="o">,</span> <span class="kt">int</span> <span class="n">childrenLeft</span><span class="o">,</span>
+            <span class="kt">boolean</span> <span class="n">selected</span><span class="o">)</span> <span class="o">{</span>
+    <span class="nc">View</span> <span class="n">child</span><span class="o">;</span>
+
+    <span class="k">if</span> <span class="o">(!</span><span class="n">mDataChanged</span><span class="o">)</span> <span class="o">{</span>
+        <span class="c1">// Try to use an exsiting view for this position</span>
+        <span class="n">child</span> <span class="o">=</span> <span class="n">mRecycler</span><span class="o">.</span><span class="na">getActiveView</span><span class="o">(</span><span class="n">position</span><span class="o">);</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">child</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">if</span> <span class="o">(</span><span class="nc">ViewDebug</span><span class="o">.</span><span class="na">TRACE_RECYCLER</span><span class="o">)</span> <span class="o">{</span>
+                <span class="nc">ViewDebug</span><span class="o">.</span><span class="na">trace</span><span class="o">(</span><span class="n">child</span><span class="o">,</span> <span class="nc">ViewDebug</span><span class="o">.</span><span class="na">RecyclerTraceType</span><span class="o">.</span><span class="na">RECYCLE_FROM_ACTIVE_HEAP</span><span class="o">,</span>
+                        <span class="n">position</span><span class="o">,</span> <span class="n">getChildCount</span><span class="o">());</span>
+            <span class="o">}</span>
+
+            <span class="c1">// Found it -- we're using an existing child</span>
+            <span class="c1">// This just needs to be positioned</span>
+            <span class="n">setupChild</span><span class="o">(</span><span class="n">child</span><span class="o">,</span> <span class="n">position</span><span class="o">,</span> <span class="n">y</span><span class="o">,</span> <span class="n">flow</span><span class="o">,</span> <span class="n">childrenLeft</span><span class="o">,</span> <span class="n">selected</span><span class="o">,</span> <span class="kc">true</span><span class="o">);</span>
+
+            <span class="k">return</span> <span class="n">child</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="c1">// Make a new view for this position, or convert an unused view if possible</span>
+    <span class="n">child</span> <span class="o">=</span> <span class="n">obtainView</span><span class="o">(</span><span class="n">position</span><span class="o">,</span> <span class="n">mIsScrap</span><span class="o">);</span>
+
+    <span class="c1">// This needs to be positioned and measured</span>
+    <span class="n">setupChild</span><span class="o">(</span><span class="n">child</span><span class="o">,</span> <span class="n">position</span><span class="o">,</span> <span class="n">y</span><span class="o">,</span> <span class="n">flow</span><span class="o">,</span> <span class="n">childrenLeft</span><span class="o">,</span> <span class="n">selected</span><span class="o">,</span> <span class="n">mIsScrap</span><span class="o">[</span><span class="mi">0</span><span class="o">]);</span>
+
+    <span class="k">return</span> <span class="n">child</span><span class="o">;</span>
+<span class="o">}</span>
+
+<span class="nc">View</span> <span class="nf">obtainView</span><span class="o">(</span><span class="kt">int</span> <span class="n">position</span><span class="o">,</span> <span class="kt">boolean</span><span class="o">[]</span> <span class="n">isScrap</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">isScrap</span><span class="o">[</span><span class="mi">0</span><span class="o">]</span> <span class="o">=</span> <span class="kc">false</span><span class="o">;</span>
+        <span class="nc">View</span> <span class="n">scrapView</span><span class="o">;</span>
+
+        <span class="n">scrapView</span> <span class="o">=</span> <span class="n">mRecycler</span><span class="o">.</span><span class="na">getScrapView</span><span class="o">(</span><span class="n">position</span><span class="o">);</span>
+
+        <span class="nc">View</span> <span class="n">child</span><span class="o">;</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">scrapView</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">if</span> <span class="o">(</span><span class="nc">ViewDebug</span><span class="o">.</span><span class="na">TRACE_RECYCLER</span><span class="o">)</span> <span class="o">{</span>
+                <span class="nc">ViewDebug</span><span class="o">.</span><span class="na">trace</span><span class="o">(</span><span class="n">scrapView</span><span class="o">,</span> <span class="nc">ViewDebug</span><span class="o">.</span><span class="na">RecyclerTraceType</span><span class="o">.</span><span class="na">RECYCLE_FROM_SCRAP_HEAP</span><span class="o">,</span>
+                        <span class="n">position</span><span class="o">,</span> <span class="o">-</span><span class="mi">1</span><span class="o">);</span>
+            <span class="o">}</span>
+
+            <span class="n">child</span> <span class="o">=</span> <span class="n">mAdapter</span><span class="o">.</span><span class="na">getView</span><span class="o">(</span><span class="n">position</span><span class="o">,</span> <span class="n">scrapView</span><span class="o">,</span> <span class="k">this</span><span class="o">);</span>
+
+            <span class="k">if</span> <span class="o">(</span><span class="nc">ViewDebug</span><span class="o">.</span><span class="na">TRACE_RECYCLER</span><span class="o">)</span> <span class="o">{</span>
+                <span class="nc">ViewDebug</span><span class="o">.</span><span class="na">trace</span><span class="o">(</span><span class="n">child</span><span class="o">,</span> <span class="nc">ViewDebug</span><span class="o">.</span><span class="na">RecyclerTraceType</span><span class="o">.</span><span class="na">BIND_VIEW</span><span class="o">,</span>
+                        <span class="n">position</span><span class="o">,</span> <span class="n">getChildCount</span><span class="o">());</span>
+            <span class="o">}</span>
+
+            <span class="k">if</span> <span class="o">(</span><span class="n">child</span> <span class="o">!=</span> <span class="n">scrapView</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">mRecycler</span><span class="o">.</span><span class="na">addScrapView</span><span class="o">(</span><span class="n">scrapView</span><span class="o">);</span>
+                <span class="k">if</span> <span class="o">(</span><span class="n">mCacheColorHint</span> <span class="o">!=</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+                    <span class="n">child</span><span class="o">.</span><span class="na">setDrawingCacheBackgroundColor</span><span class="o">(</span><span class="n">mCacheColorHint</span><span class="o">);</span>
+                <span class="o">}</span>
+                <span class="k">if</span> <span class="o">(</span><span class="nc">ViewDebug</span><span class="o">.</span><span class="na">TRACE_RECYCLER</span><span class="o">)</span> <span class="o">{</span>
+                    <span class="nc">ViewDebug</span><span class="o">.</span><span class="na">trace</span><span class="o">(</span><span class="n">scrapView</span><span class="o">,</span> <span class="nc">ViewDebug</span><span class="o">.</span><span class="na">RecyclerTraceType</span><span class="o">.</span><span class="na">MOVE_TO_SCRAP_HEAP</span><span class="o">,</span>
+                            <span class="n">position</span><span class="o">,</span> <span class="o">-</span><span class="mi">1</span><span class="o">);</span>
+                <span class="o">}</span>
+            <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+                <span class="n">isScrap</span><span class="o">[</span><span class="mi">0</span><span class="o">]</span> <span class="o">=</span> <span class="kc">true</span><span class="o">;</span>
+                <span class="n">child</span><span class="o">.</span><span class="na">dispatchFinishTemporaryDetach</span><span class="o">();</span>
+            <span class="o">}</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="n">child</span> <span class="o">=</span> <span class="n">mAdapter</span><span class="o">.</span><span class="na">getView</span><span class="o">(</span><span class="n">position</span><span class="o">,</span> <span class="kc">null</span><span class="o">,</span> <span class="k">this</span><span class="o">);</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">mCacheColorHint</span> <span class="o">!=</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">child</span><span class="o">.</span><span class="na">setDrawingCacheBackgroundColor</span><span class="o">(</span><span class="n">mCacheColorHint</span><span class="o">);</span>
+            <span class="o">}</span>
+            <span class="k">if</span> <span class="o">(</span><span class="nc">ViewDebug</span><span class="o">.</span><span class="na">TRACE_RECYCLER</span><span class="o">)</span> <span class="o">{</span>
+                <span class="nc">ViewDebug</span><span class="o">.</span><span class="na">trace</span><span class="o">(</span><span class="n">child</span><span class="o">,</span> <span class="nc">ViewDebug</span><span class="o">.</span><span class="na">RecyclerTraceType</span><span class="o">.</span><span class="na">NEW_VIEW</span><span class="o">,</span>
+                        <span class="n">position</span><span class="o">,</span> <span class="n">getChildCount</span><span class="o">());</span>
+            <span class="o">}</span>
+        <span class="o">}</span>
+
+        <span class="k">return</span> <span class="n">child</span><span class="o">;</span>
+    <span class="o">}</span></code></pre></figure>
+
+<p>这些就是核心代码了。第一次layout就是根据当前的listview高度来计算我们要new多少个view。这个数量基本上就是我们listview所有需要创造的对象了，
+这也是其复用的核心思路。第一次layout会走child = mAdapter.getView(position, null, this)。这个就是我们的自定义adapter复写的方法，里面会
+调用Inflator.inflate来解析xml文件，这个是比较耗时的操作。
+下面我们还具体关注下，setupChild方法：</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">private</span> <span class="kt">void</span> <span class="nf">setupChild</span><span class="o">(</span><span class="nc">View</span> <span class="n">child</span><span class="o">,</span> <span class="kt">int</span> <span class="n">position</span><span class="o">,</span> <span class="kt">int</span> <span class="n">y</span><span class="o">,</span> <span class="kt">boolean</span> <span class="n">flowDown</span><span class="o">,</span> <span class="kt">int</span> <span class="n">childrenLeft</span><span class="o">,</span>
+            <span class="kt">boolean</span> <span class="n">selected</span><span class="o">,</span> <span class="kt">boolean</span> <span class="n">recycled</span><span class="o">)</span> <span class="o">{</span>
+        <span class="o">.....</span>
+
+        <span class="k">if</span> <span class="o">((</span><span class="n">recycled</span> <span class="o">&amp;&amp;</span> <span class="o">!</span><span class="n">p</span><span class="o">.</span><span class="na">forceAdd</span><span class="o">)</span> <span class="o">||</span> <span class="o">(</span><span class="n">p</span><span class="o">.</span><span class="na">recycledHeaderFooter</span> <span class="o">&amp;&amp;</span>
+                <span class="n">p</span><span class="o">.</span><span class="na">viewType</span> <span class="o">==</span> <span class="nc">AdapterView</span><span class="o">.</span><span class="na">ITEM_VIEW_TYPE_HEADER_OR_FOOTER</span><span class="o">))</span> <span class="o">{</span>
+            <span class="n">attachViewToParent</span><span class="o">(</span><span class="n">child</span><span class="o">,</span> <span class="n">flowDown</span> <span class="o">?</span> <span class="o">-</span><span class="mi">1</span> <span class="o">:</span> <span class="mi">0</span><span class="o">,</span> <span class="n">p</span><span class="o">);</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="n">p</span><span class="o">.</span><span class="na">forceAdd</span> <span class="o">=</span> <span class="kc">false</span><span class="o">;</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">p</span><span class="o">.</span><span class="na">viewType</span> <span class="o">==</span> <span class="nc">AdapterView</span><span class="o">.</span><span class="na">ITEM_VIEW_TYPE_HEADER_OR_FOOTER</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">p</span><span class="o">.</span><span class="na">recycledHeaderFooter</span> <span class="o">=</span> <span class="kc">true</span><span class="o">;</span>
+            <span class="o">}</span>
+            <span class="n">addViewInLayout</span><span class="o">(</span><span class="n">child</span><span class="o">,</span> <span class="n">flowDown</span> <span class="o">?</span> <span class="o">-</span><span class="mi">1</span> <span class="o">:</span> <span class="mi">0</span><span class="o">,</span> <span class="n">p</span><span class="o">,</span> <span class="kc">true</span><span class="o">);</span>
+        <span class="o">}</span>
+
+      <span class="o">....</span>
+    <span class="o">}</span></code></pre></figure>
+
+<p>可以看到recycled为true，则attach上去，这是第二次layout会走的路径。如果recycled为false，则调用addViewInLayout来给listview添加子view,
+这是第一次layout会走的路径。</p>
+
+<p>接下来看看第二次layout的过程</p>
+
+<h3 id="第二次layout">第二次layout</h3>
+<p>其实第二次layout的代码和第一次是一样的，就是代码的路径分支不一样。我们看下listview是如何设计，来避免两次layout重复解析xml文件和添加子view。</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="k">if</span> <span class="o">(</span><span class="n">dataChanged</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">for</span> <span class="o">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">childCount</span><span class="o">;</span> <span class="n">i</span><span class="o">++)</span> <span class="o">{</span>
+            <span class="n">recycleBin</span><span class="o">.</span><span class="na">addScrapView</span><span class="o">(</span><span class="n">getChildAt</span><span class="o">(</span><span class="n">i</span><span class="o">));</span>
+            <span class="k">if</span> <span class="o">(</span><span class="nc">ViewDebug</span><span class="o">.</span><span class="na">TRACE_RECYCLER</span><span class="o">)</span> <span class="o">{</span>
+                <span class="nc">ViewDebug</span><span class="o">.</span><span class="na">trace</span><span class="o">(</span><span class="n">getChildAt</span><span class="o">(</span><span class="n">i</span><span class="o">),</span>
+                        <span class="nc">ViewDebug</span><span class="o">.</span><span class="na">RecyclerTraceType</span><span class="o">.</span><span class="na">MOVE_TO_SCRAP_HEAP</span><span class="o">,</span> <span class="n">index</span><span class="o">,</span> <span class="n">i</span><span class="o">);</span>
+            <span class="o">}</span>
+        <span class="o">}</span>
+    <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+        <span class="n">recycleBin</span><span class="o">.</span><span class="na">fillActiveViews</span><span class="o">(</span><span class="n">childCount</span><span class="o">,</span> <span class="n">firstPosition</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="c1">// take focus back to us temporarily to avoid the eventual</span>
+    <span class="c1">// call to clear focus when removing the focused child below</span>
+    <span class="c1">// from messing things up when ViewRoot assigns focus back</span>
+    <span class="c1">// to someone else</span>
+    <span class="kd">final</span> <span class="nc">View</span> <span class="n">focusedChild</span> <span class="o">=</span> <span class="n">getFocusedChild</span><span class="o">();</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">focusedChild</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+        <span class="c1">// TODO: in some cases focusedChild.getParent() == null</span>
+
+        <span class="c1">// we can remember the focused view to restore after relayout if the</span>
+        <span class="c1">// data hasn't changed, or if the focused position is a header or footer</span>
+        <span class="k">if</span> <span class="o">(!</span><span class="n">dataChanged</span> <span class="o">||</span> <span class="n">isDirectChildHeaderOrFooter</span><span class="o">(</span><span class="n">focusedChild</span><span class="o">))</span> <span class="o">{</span>
+            <span class="n">focusLayoutRestoreDirectChild</span> <span class="o">=</span> <span class="n">focusedChild</span><span class="o">;</span>
+            <span class="c1">// remember the specific view that had focus</span>
+            <span class="n">focusLayoutRestoreView</span> <span class="o">=</span> <span class="n">findFocus</span><span class="o">();</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">focusLayoutRestoreView</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+                <span class="c1">// tell it we are going to mess with it</span>
+                <span class="n">focusLayoutRestoreView</span><span class="o">.</span><span class="na">onStartTemporaryDetach</span><span class="o">();</span>
+            <span class="o">}</span>
+        <span class="o">}</span>
+        <span class="n">requestFocus</span><span class="o">();</span>
+    <span class="o">}</span>
+
+    <span class="c1">// Clear out old views</span>
+    <span class="n">detachAllViewsFromParent</span><span class="o">();</span>
+
+    <span class="k">switch</span> <span class="o">(</span><span class="n">mLayoutMode</span><span class="o">)</span> <span class="o">{</span>
+    <span class="o">....</span>
+    <span class="k">default</span><span class="o">:</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">childCount</span> <span class="o">==</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">if</span> <span class="o">(!</span><span class="n">mStackFromBottom</span><span class="o">)</span> <span class="o">{</span>
+                <span class="kd">final</span> <span class="kt">int</span> <span class="n">position</span> <span class="o">=</span> <span class="n">lookForSelectablePosition</span><span class="o">(</span><span class="mi">0</span><span class="o">,</span> <span class="kc">true</span><span class="o">);</span>
+                <span class="n">setSelectedPositionInt</span><span class="o">(</span><span class="n">position</span><span class="o">);</span>
+                <span class="n">sel</span> <span class="o">=</span> <span class="n">fillFromTop</span><span class="o">(</span><span class="n">childrenTop</span><span class="o">);</span>
+            <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+                <span class="kd">final</span> <span class="kt">int</span> <span class="n">position</span> <span class="o">=</span> <span class="n">lookForSelectablePosition</span><span class="o">(</span><span class="n">mItemCount</span> <span class="o">-</span> <span class="mi">1</span><span class="o">,</span> <span class="kc">false</span><span class="o">);</span>
+                <span class="n">setSelectedPositionInt</span><span class="o">(</span><span class="n">position</span><span class="o">);</span>
+                <span class="n">sel</span> <span class="o">=</span> <span class="n">fillUp</span><span class="o">(</span><span class="n">mItemCount</span> <span class="o">-</span> <span class="mi">1</span><span class="o">,</span> <span class="n">childrenBottom</span><span class="o">);</span>
+            <span class="o">}</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">mSelectedPosition</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="o">&amp;&amp;</span> <span class="n">mSelectedPosition</span> <span class="o">&lt;</span> <span class="n">mItemCount</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">sel</span> <span class="o">=</span> <span class="n">fillSpecific</span><span class="o">(</span><span class="n">mSelectedPosition</span><span class="o">,</span>
+                        <span class="n">oldSel</span> <span class="o">==</span> <span class="kc">null</span> <span class="o">?</span> <span class="n">childrenTop</span> <span class="o">:</span> <span class="n">oldSel</span><span class="o">.</span><span class="na">getTop</span><span class="o">());</span>
+            <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">mFirstPosition</span> <span class="o">&lt;</span> <span class="n">mItemCount</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">sel</span> <span class="o">=</span> <span class="n">fillSpecific</span><span class="o">(</span><span class="n">mFirstPosition</span><span class="o">,</span>
+                        <span class="n">oldFirst</span> <span class="o">==</span> <span class="kc">null</span> <span class="o">?</span> <span class="n">childrenTop</span> <span class="o">:</span> <span class="n">oldFirst</span><span class="o">.</span><span class="na">getTop</span><span class="o">());</span>
+            <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+                <span class="n">sel</span> <span class="o">=</span> <span class="n">fillSpecific</span><span class="o">(</span><span class="mi">0</span><span class="o">,</span> <span class="n">childrenTop</span><span class="o">);</span>
+            <span class="o">}</span>
+        <span class="o">}</span>
+        <span class="k">break</span><span class="o">;</span>
+    <span class="o">}</span></code></pre></figure>
+
+<p>这次会走recycleBin.fillActiveViews(childCount, firstPosition);点进去看下源码</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kt">void</span> <span class="nf">fillActiveViews</span><span class="o">(</span><span class="kt">int</span> <span class="n">childCount</span><span class="o">,</span> <span class="kt">int</span> <span class="n">firstActivePosition</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">mActiveViews</span><span class="o">.</span><span class="na">length</span> <span class="o">&lt;</span> <span class="n">childCount</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">mActiveViews</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">View</span><span class="o">[</span><span class="n">childCount</span><span class="o">];</span>
+    <span class="o">}</span>
+    <span class="n">mFirstActivePosition</span> <span class="o">=</span> <span class="n">firstActivePosition</span><span class="o">;</span>
+
+    <span class="kd">final</span> <span class="nc">View</span><span class="o">[]</span> <span class="n">activeViews</span> <span class="o">=</span> <span class="n">mActiveViews</span><span class="o">;</span>
+    <span class="k">for</span> <span class="o">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">childCount</span><span class="o">;</span> <span class="n">i</span><span class="o">++)</span> <span class="o">{</span>
+        <span class="nc">View</span> <span class="n">child</span> <span class="o">=</span> <span class="n">getChildAt</span><span class="o">(</span><span class="n">i</span><span class="o">);</span>
+        <span class="nc">AbsListView</span><span class="o">.</span><span class="na">LayoutParams</span> <span class="n">lp</span> <span class="o">=</span> <span class="o">(</span><span class="nc">AbsListView</span><span class="o">.</span><span class="na">LayoutParams</span><span class="o">)</span> <span class="n">child</span><span class="o">.</span><span class="na">getLayoutParams</span><span class="o">();</span>
+        <span class="c1">// Don't put header or footer views into the scrap heap</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">lp</span> <span class="o">!=</span> <span class="kc">null</span> <span class="o">&amp;&amp;</span> <span class="n">lp</span><span class="o">.</span><span class="na">viewType</span> <span class="o">!=</span> <span class="no">ITEM_VIEW_TYPE_HEADER_OR_FOOTER</span><span class="o">)</span> <span class="o">{</span>
+            <span class="c1">// Note:  We do place AdapterView.ITEM_VIEW_TYPE_IGNORE in active views.</span>
+            <span class="c1">//        However, we will NOT place them into scrap views.</span>
+            <span class="n">activeViews</span><span class="o">[</span><span class="n">i</span><span class="o">]</span> <span class="o">=</span> <span class="n">child</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>一眼就能看明白，作用就是根据当前子view的数量，初始化了mActiveViews，并且用它来记录这些child view。</p>
+
+<p>再看detachAllViewsFromParent()</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">protected</span> <span class="kt">void</span> <span class="nf">detachAllViewsFromParent</span><span class="o">()</span> <span class="o">{</span>
+        <span class="kd">final</span> <span class="kt">int</span> <span class="n">count</span> <span class="o">=</span> <span class="n">mChildrenCount</span><span class="o">;</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">count</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span><span class="o">;</span>
+        <span class="o">}</span>
+
+        <span class="kd">final</span> <span class="nc">View</span><span class="o">[]</span> <span class="n">children</span> <span class="o">=</span> <span class="n">mChildren</span><span class="o">;</span>
+        <span class="n">mChildrenCount</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+
+        <span class="k">for</span> <span class="o">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="n">count</span> <span class="o">-</span> <span class="mi">1</span><span class="o">;</span> <span class="n">i</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="o">;</span> <span class="n">i</span><span class="o">--)</span> <span class="o">{</span>
+            <span class="n">children</span><span class="o">[</span><span class="n">i</span><span class="o">].</span><span class="na">mParent</span> <span class="o">=</span> <span class="kc">null</span><span class="o">;</span>
+            <span class="n">children</span><span class="o">[</span><span class="n">i</span><span class="o">]</span> <span class="o">=</span> <span class="kc">null</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span></code></pre></figure>
+
+<p>也很简单，mChildrenCount置0，child.Parent置空</p>
+
+<p>接着还是走sel = fillFromTop(childrenTop);我们直接看</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">private</span> <span class="nc">View</span> <span class="nf">makeAndAddView</span><span class="o">(</span><span class="kt">int</span> <span class="n">position</span><span class="o">,</span> <span class="kt">int</span> <span class="n">y</span><span class="o">,</span> <span class="kt">boolean</span> <span class="n">flow</span><span class="o">,</span> <span class="kt">int</span> <span class="n">childrenLeft</span><span class="o">,</span>
+            <span class="kt">boolean</span> <span class="n">selected</span><span class="o">)</span> <span class="o">{</span>
+    <span class="nc">View</span> <span class="n">child</span><span class="o">;</span>
+
+    <span class="k">if</span> <span class="o">(!</span><span class="n">mDataChanged</span><span class="o">)</span> <span class="o">{</span>
+        <span class="c1">// Try to use an exsiting view for this position</span>
+        <span class="n">child</span> <span class="o">=</span> <span class="n">mRecycler</span><span class="o">.</span><span class="na">getActiveView</span><span class="o">(</span><span class="n">position</span><span class="o">);</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">child</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">if</span> <span class="o">(</span><span class="nc">ViewDebug</span><span class="o">.</span><span class="na">TRACE_RECYCLER</span><span class="o">)</span> <span class="o">{</span>
+                <span class="nc">ViewDebug</span><span class="o">.</span><span class="na">trace</span><span class="o">(</span><span class="n">child</span><span class="o">,</span> <span class="nc">ViewDebug</span><span class="o">.</span><span class="na">RecyclerTraceType</span><span class="o">.</span><span class="na">RECYCLE_FROM_ACTIVE_HEAP</span><span class="o">,</span>
+                        <span class="n">position</span><span class="o">,</span> <span class="n">getChildCount</span><span class="o">());</span>
+            <span class="o">}</span>
+
+            <span class="c1">// Found it -- we're using an existing child</span>
+            <span class="c1">// This just needs to be positioned</span>
+            <span class="n">setupChild</span><span class="o">(</span><span class="n">child</span><span class="o">,</span> <span class="n">position</span><span class="o">,</span> <span class="n">y</span><span class="o">,</span> <span class="n">flow</span><span class="o">,</span> <span class="n">childrenLeft</span><span class="o">,</span> <span class="n">selected</span><span class="o">,</span> <span class="kc">true</span><span class="o">);</span>
+
+            <span class="k">return</span> <span class="n">child</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="c1">// Make a new view for this position, or convert an unused view if possible</span>
+    <span class="n">child</span> <span class="o">=</span> <span class="n">obtainView</span><span class="o">(</span><span class="n">position</span><span class="o">,</span> <span class="n">mIsScrap</span><span class="o">);</span>
+
+    <span class="c1">// This needs to be positioned and measured</span>
+    <span class="n">setupChild</span><span class="o">(</span><span class="n">child</span><span class="o">,</span> <span class="n">position</span><span class="o">,</span> <span class="n">y</span><span class="o">,</span> <span class="n">flow</span><span class="o">,</span> <span class="n">childrenLeft</span><span class="o">,</span> <span class="n">selected</span><span class="o">,</span> <span class="n">mIsScrap</span><span class="o">[</span><span class="mi">0</span><span class="o">]);</span>
+
+    <span class="k">return</span> <span class="n">child</span><span class="o">;</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>child = mRecycler.getActiveView(position)这一次就有值了，调用setupChild,其recycled参数为true,进去只执行attach操作。</p>
+
+<h3 id="最后的总结">最后的总结</h3>
+<p>listview的精华可以说是在RecycleBin类里的两个数组，mActiveViews和mScrapViews.<br />
+mActiveViews的设计，其中子view经过了attach–detach–attach的过程，巧妙的避免了两次layout重复解析xml和添加子view的问题，提高了 <br />
+listview的性能。
+mScrapViews的设计我们没有过多讲解，其原因是其比较简单好为理解。作用就是起到了子view的复用，每当有子view滑出listview的范围，该view就
+会入栈mScrapViews，同时我们调用obtainView获取新view，就是从mScrapViews出栈。</p>
+:ET

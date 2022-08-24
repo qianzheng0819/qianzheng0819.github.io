@@ -1,0 +1,9 @@
+I"<p>init进程会解析init.rc文件</p>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><span class="n">service</span> <span class="n">zygote</span> <span class="o">/</span><span class="n">system</span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">app_process</span> <span class="o">-</span><span class="n">Xzygote</span> <span class="o">/</span><span class="n">system</span><span class="o">/</span><span class="n">bin</span> <span class="o">--</span><span class="n">zygote</span> <span class="o">--</span><span class="n">start</span><span class="o">-</span><span class="n">system</span><span class="o">-</span><span class="n">server</span>
+    <span class="n">socket</span> <span class="n">zygote</span> <span class="n">stream</span> <span class="mi">666</span>
+    <span class="n">onrestart</span> <span class="n">write</span> <span class="o">/</span><span class="n">sys</span><span class="o">/</span><span class="n">android_power</span><span class="o">/</span><span class="n">request_state</span> <span class="n">wake</span>
+    <span class="n">onrestart</span> <span class="n">write</span> <span class="o">/</span><span class="n">sys</span><span class="o">/</span><span class="n">power</span><span class="o">/</span><span class="n">state</span> <span class="n">on</span>
+    <span class="n">onrestart</span> <span class="n">restart</span> <span class="n">media</span>
+    <span class="n">onrestart</span> <span class="n">restart</span> <span class="n">netd</span></code></pre></figure>
+:ET

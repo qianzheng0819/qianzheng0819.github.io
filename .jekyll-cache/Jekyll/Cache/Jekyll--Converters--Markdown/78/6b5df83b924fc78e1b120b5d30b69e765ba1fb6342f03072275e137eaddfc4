@@ -1,0 +1,22 @@
+I"�<h3 id="git相关">git相关</h3>
+<ul>
+  <li>Github page经常更新很慢，所以就需要提交一个空的内容: <code class="language-plaintext highlighter-rouge">git commit -m "zzz" --allow-empty</code></li>
+  <li>gcc hellojni.c -shared -fPIC -o libhellojni.so</li>
+  <li>git rm –cached $file 清除缓存</li>
+  <li>git push origin -d $branch</li>
+  <li>git checkout –track origin/branch 从远程分支拉取代码</li>
+  <li>git remote set-url origin $gitPath 设置远端项目的url</li>
+  <li>git branch -u(–set-upstream-to) origin/$path 建立当前分支与远程分支的映射关系</li>
+  <li>git push –set-upstream origin dev_6.3_qian 向远端推分支，且设置映射关系</li>
+  <li>git push -u origin dev_6.3_qian 向远端推分支，且设置映射关系</li>
+  <li>git checkout – . How do I discard unstaged changes in Git?</li>
+  <li>git clean  删除本地未add的文件</li>
+  <li>git merget $branch –allow-unrelated-histories 解决fatal: refusing to merge unrelated histories</li>
+  <li>git remote add origin https://github.com/guyibang/TEST2.git  <br />
+git push -u origin master 这样可以给github推我们本地的项目</li>
+  <li>git branch -vv查看映射关系</li>
+  <li>git fetch –prune https://blog.csdn.net/sgs595595/article/details/72480346</li>
+  <li>首先清除远程分支的本地缓存：git fetch -p origin</li>
+  <li>WURQ2CZLCOGDUSXM</li>
+</ul>
+:ET

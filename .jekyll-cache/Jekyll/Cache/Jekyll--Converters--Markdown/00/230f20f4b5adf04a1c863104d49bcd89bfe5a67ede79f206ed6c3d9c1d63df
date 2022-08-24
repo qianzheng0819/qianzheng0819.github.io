@@ -1,0 +1,77 @@
+I",<p>详细代码分析可以参考罗神的博客，我这里总结一下方便记忆。</p>
+
+<p>主进程和ams ipc创建新进程pid和新服务serviceRecord,并分别保存它们在ams服务的集合里。</p>
+
+<p>新进程会加载ActivityThread，然后流程如下：</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">public</span> <span class="kd">final</span> <span class="kd">class</span> <span class="nc">ActivityThread</span> <span class="o">{</span>
+
+	<span class="o">......</span>
+
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">final</span> <span class="kt">void</span> <span class="nf">main</span><span class="o">(</span><span class="nc">String</span><span class="o">[]</span> <span class="n">args</span><span class="o">)</span> <span class="o">{</span>
+
+		<span class="o">......</span>
+
+		<span class="nc">Looper</span><span class="o">.</span><span class="na">prepareMainLooper</span><span class="o">();</span>
+
+		<span class="o">......</span>
+
+		<span class="nc">ActivityThread</span> <span class="n">thread</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">ActivityThread</span><span class="o">();</span>
+		<span class="n">thread</span><span class="o">.</span><span class="na">attach</span><span class="o">(</span><span class="kc">false</span><span class="o">);</span>
+
+		<span class="o">......</span>
+
+		<span class="nc">Looper</span><span class="o">.</span><span class="na">loop</span><span class="o">();</span>
+
+		<span class="o">......</span>
+
+		<span class="n">thread</span><span class="o">.</span><span class="na">detach</span><span class="o">();</span>
+
+		<span class="o">......</span>
+	<span class="o">}</span>
+
+  <span class="kd">public</span> <span class="kd">final</span> <span class="kd">class</span> <span class="nc">ActivityThread</span> <span class="o">{</span>
+
+	<span class="o">......</span>
+
+	<span class="kd">private</span> <span class="kd">final</span> <span class="kt">void</span> <span class="nf">attach</span><span class="o">(</span><span class="kt">boolean</span> <span class="n">system</span><span class="o">)</span> <span class="o">{</span>
+
+		<span class="o">......</span>
+
+		<span class="k">if</span> <span class="o">(!</span><span class="n">system</span><span class="o">)</span> <span class="o">{</span>
+
+			<span class="o">......</span>
+
+			<span class="nc">IActivityManager</span> <span class="n">mgr</span> <span class="o">=</span> <span class="nc">ActivityManagerNative</span><span class="o">.</span><span class="na">getDefault</span><span class="o">();</span>
+			<span class="k">try</span> <span class="o">{</span>
+				<span class="n">mgr</span><span class="o">.</span><span class="na">attachApplication</span><span class="o">(</span><span class="n">mAppThread</span><span class="o">);</span>
+			<span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">RemoteException</span> <span class="n">ex</span><span class="o">)</span> <span class="o">{</span>
+			<span class="o">}</span>
+		<span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+
+			<span class="o">......</span>
+
+		<span class="o">}</span>
+
+		<span class="o">......</span>
+
+	<span class="o">}</span>
+
+	<span class="o">......</span>
+
+<span class="o">}</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>新进程会和ams ipc通过pid,processName取回对应的服务。然后ams会调用realStartServiceLocked，
+ipc ActivityThread的ApplicationThread服务（ApplicationThread是framework java层的服务，不要被它的名字迷惑^-^）。上述过程有两次ipc。</p>
+
+<p>我的感觉：ams好像一个临时中转站，在这里生产出目标ServiceRecord，然后将它入库封存。新进程要取用ServiceRecord时，通过pid找到进程app，再用app.processName和app.uid找到ServiceRecord。
+期间有主进程向ams的ipc，新进程向ams的ipc，ams向新进程的ipc三次ipc。</p>
+
+<p>最后贴下罗神的总结：
+一. Step 1至Step 7，从主进程调用到ActivityManagerService进程中，完成新进程的创建；</p>
+
+<p>二. Step 8至Step 11，从新进程调用到ActivityManagerService进程中，获取要在新进程启动的服务的相关信息；</p>
+
+<p>三. Step 12至Step 20，从ActivityManagerService进程又回到新进程中，最终将服务启动起来</p>
+:ET

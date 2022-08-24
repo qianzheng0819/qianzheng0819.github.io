@@ -1,0 +1,65 @@
+I"W<h3 id="前言">前言</h3>
+<p>雷霄骅大神的这篇文章UDP-RTP协议解析写的很好，链接如下：     <br />
+<a href="https://blog.csdn.net/leixiaohua1020/article/details/50535230#t3">UDP-RTP协议解析</a>  <br />
+但是大神的编码环境是windows，代码里用的是winsocket。这里我修改了一下，用的是linux socket。可以在我的ubuntu上跑起来了。</p>
+
+<p>直接上有改动的代码吧</p>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><span class="p">......</span>
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span><span class="o">*</span> <span class="n">argv</span><span class="p">[])</span>
+<span class="p">{</span>
+	<span class="kt">int</span> <span class="n">cnt</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span>
+
+	<span class="c1">//FILE *myout=fopen("output_log.txt","wb+");</span>
+	<span class="kt">FILE</span> <span class="o">*</span><span class="n">myout</span><span class="o">=</span><span class="n">stdout</span><span class="p">;</span>
+
+	<span class="kt">FILE</span> <span class="o">*</span><span class="n">fp1</span><span class="o">=</span><span class="n">fopen</span><span class="p">(</span><span class="s">"output_dump.ts"</span><span class="p">,</span><span class="s">"wb+"</span><span class="p">);</span>
+
+	<span class="kt">int</span> <span class="n">fd</span><span class="p">,</span> <span class="n">err</span><span class="p">;</span>
+	<span class="kt">char</span> <span class="o">*</span><span class="n">host</span><span class="p">;</span>
+	<span class="kt">int</span> <span class="n">reuse</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>
+	<span class="kt">int</span> <span class="n">n</span> <span class="o">=</span> <span class="mi">20</span><span class="p">;</span>
+
+	<span class="n">fd</span> <span class="o">=</span> <span class="n">socket</span><span class="p">(</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">SOCK_DGRAM</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">fd</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span>
+		<span class="k">return</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+
+	<span class="k">if</span> <span class="p">(</span><span class="n">setsockopt</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="n">SOL_SOCKET</span><span class="p">,</span> <span class="n">SO_REUSEADDR</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">reuse</span><span class="p">,</span><span class="k">sizeof</span><span class="p">(</span><span class="kt">int</span><span class="p">))</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span>
+		<span class="k">return</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+
+	<span class="k">if</span> <span class="p">((</span><span class="n">host</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="n">n</span><span class="p">))</span> <span class="o">==</span> <span class="nb">NULL</span><span class="p">)</span>
+		<span class="n">printf</span><span class="p">(</span><span class="s">"err</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">gethostname</span><span class="p">(</span><span class="n">host</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span>
+		<span class="n">printf</span><span class="p">(</span><span class="s">"err</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+
+	<span class="k">struct</span> <span class="n">addrinfo</span>	<span class="o">*</span><span class="n">ailist</span><span class="p">,</span> <span class="o">*</span><span class="n">aip</span><span class="p">;</span>
+	<span class="k">struct</span> <span class="n">addrinfo</span>	<span class="n">hint</span><span class="p">,</span> <span class="n">udpaddr</span><span class="p">;</span>
+	<span class="n">memset</span><span class="p">(</span><span class="o">&amp;</span><span class="n">hint</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">hint</span><span class="p">));</span>
+	<span class="n">hint</span><span class="p">.</span><span class="n">ai_flags</span> <span class="o">=</span> <span class="n">AI_CANONNAME</span><span class="p">;</span>
+	<span class="n">hint</span><span class="p">.</span><span class="n">ai_socktype</span> <span class="o">=</span> <span class="n">SOCK_DGRAM</span><span class="p">;</span>
+	<span class="n">hint</span><span class="p">.</span><span class="n">ai_canonname</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+	<span class="n">hint</span><span class="p">.</span><span class="n">ai_addr</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+	<span class="n">hint</span><span class="p">.</span><span class="n">ai_next</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+
+	<span class="n">err</span> <span class="o">=</span> <span class="n">getaddrinfo</span><span class="p">(</span><span class="n">host</span><span class="p">,</span> <span class="s">"8880"</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">hint</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">ailist</span><span class="p">);</span>
+
+	<span class="k">if</span> <span class="p">(</span><span class="n">err</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span>
+		<span class="k">return</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+
+	<span class="n">udpaddr</span> <span class="o">=</span> <span class="o">*</span><span class="n">ailist</span><span class="p">;</span>
+
+	<span class="n">err</span> <span class="o">=</span> <span class="n">bind</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="n">udpaddr</span><span class="p">.</span><span class="n">ai_addr</span><span class="p">,</span> <span class="n">udpaddr</span><span class="p">.</span><span class="n">ai_addrlen</span><span class="p">);</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">err</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span>
+		<span class="k">return</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+
+	<span class="kt">char</span> <span class="n">recvData</span><span class="p">[</span><span class="mi">10000</span><span class="p">];</span>
+
+	<span class="c1">//How to parse?</span>
+	<span class="kt">int</span> <span class="n">parse_rtp</span><span class="o">=</span><span class="mi">1</span><span class="p">;</span>
+	<span class="kt">int</span> <span class="n">parse_mpegts</span><span class="o">=</span><span class="mi">1</span><span class="p">;</span>
+
+	<span class="k">while</span> <span class="p">(</span><span class="mi">1</span><span class="p">){</span>
+		<span class="kt">int</span> <span class="n">pktsize</span> <span class="o">=</span> <span class="n">recvfrom</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="n">recvData</span><span class="p">,</span> <span class="mi">10000</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">);</span>
+<span class="p">......</span></code></pre></figure>
+
+:ET

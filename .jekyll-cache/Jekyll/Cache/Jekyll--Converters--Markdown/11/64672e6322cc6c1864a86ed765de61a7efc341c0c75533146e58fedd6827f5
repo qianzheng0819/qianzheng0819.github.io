@@ -1,0 +1,263 @@
+I"�h<p>init进程会解析init.rc文件</p>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><span class="n">service</span> <span class="n">zygote</span> <span class="o">/</span><span class="n">system</span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">app_process</span> <span class="o">-</span><span class="n">Xzygote</span> <span class="o">/</span><span class="n">system</span><span class="o">/</span><span class="n">bin</span> <span class="o">--</span><span class="n">zygote</span> <span class="o">--</span><span class="n">start</span><span class="o">-</span><span class="n">system</span><span class="o">-</span><span class="n">server</span>
+    <span class="n">socket</span> <span class="n">zygote</span> <span class="n">stream</span> <span class="mi">666</span>
+    <span class="n">onrestart</span> <span class="n">write</span> <span class="o">/</span><span class="n">sys</span><span class="o">/</span><span class="n">android_power</span><span class="o">/</span><span class="n">request_state</span> <span class="n">wake</span>
+    <span class="n">onrestart</span> <span class="n">write</span> <span class="o">/</span><span class="n">sys</span><span class="o">/</span><span class="n">power</span><span class="o">/</span><span class="n">state</span> <span class="n">on</span>
+    <span class="n">onrestart</span> <span class="n">restart</span> <span class="n">media</span>
+    <span class="n">onrestart</span> <span class="n">restart</span> <span class="n">netd</span></code></pre></figure>
+
+<p>service zygote属于default服务组，会被init进程启动起来，不需要去触发。分析过init进程的
+解析模块就很清楚。</p>
+
+<p>关键字service告诉init进程要创建一个名为zygote的进程，该进程要执行的程序是/system/bin/app_process.</p>
+
+<p>app_process.main定义在frameworks/base/cmds/app_process/app_main.cpp文件中：</p>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span><span class="o">*</span> <span class="k">const</span> <span class="n">argv</span><span class="p">[])</span>
+<span class="p">{</span>
+	<span class="c1">// These are global variables in ProcessState.cpp</span>
+	<span class="n">mArgC</span> <span class="o">=</span> <span class="n">argc</span><span class="p">;</span>
+	<span class="n">mArgV</span> <span class="o">=</span> <span class="n">argv</span><span class="p">;</span>
+
+	<span class="n">mArgLen</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+	<span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span> <span class="n">i</span><span class="o">&lt;</span><span class="n">argc</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+		<span class="n">mArgLen</span> <span class="o">+=</span> <span class="n">strlen</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="n">i</span><span class="p">])</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>
+	<span class="p">}</span>
+	<span class="n">mArgLen</span><span class="o">--</span><span class="p">;</span>
+
+	<span class="n">AppRuntime</span> <span class="n">runtime</span><span class="p">;</span>
+
+	<span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">arg</span><span class="p">;</span><span class="o">&lt;!-*</span> <span class="o">--&gt;</span>
+	<span class="n">argv0</span> <span class="o">=</span> <span class="n">argv</span><span class="p">[</span><span class="mi">0</span><span class="p">];</span>
+
+	<span class="c1">// Process command line arguments</span>
+	<span class="c1">// ignore argv[0]</span>
+	<span class="n">argc</span><span class="o">--</span><span class="p">;</span>
+	<span class="n">argv</span><span class="o">++</span><span class="p">;</span>
+
+	<span class="c1">// Everything up to '--' or first non '-' arg goes to the vm</span>
+
+	<span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="n">runtime</span><span class="p">.</span><span class="n">addVmArguments</span><span class="p">(</span><span class="n">argc</span><span class="p">,</span> <span class="n">argv</span><span class="p">);</span>
+
+	<span class="c1">// Next arg is parent directory</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">i</span> <span class="o">&lt;</span> <span class="n">argc</span><span class="p">)</span> <span class="p">{</span>
+		<span class="n">runtime</span><span class="p">.</span><span class="n">mParentDir</span> <span class="o">=</span> <span class="n">argv</span><span class="p">[</span><span class="n">i</span><span class="o">++</span><span class="p">];</span>
+	<span class="p">}</span>
+
+	<span class="c1">// Next arg is startup classname or "--zygote"</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">i</span> <span class="o">&lt;</span> <span class="n">argc</span><span class="p">)</span> <span class="p">{</span>
+		<span class="n">arg</span> <span class="o">=</span> <span class="n">argv</span><span class="p">[</span><span class="n">i</span><span class="o">++</span><span class="p">];</span>
+		<span class="k">if</span> <span class="p">(</span><span class="mi">0</span> <span class="o">==</span> <span class="n">strcmp</span><span class="p">(</span><span class="s">"--zygote"</span><span class="p">,</span> <span class="n">arg</span><span class="p">))</span> <span class="p">{</span>
+			<span class="n">bool</span> <span class="n">startSystemServer</span> <span class="o">=</span> <span class="p">(</span><span class="n">i</span> <span class="o">&lt;</span> <span class="n">argc</span><span class="p">)</span> <span class="o">?</span>
+				<span class="n">strcmp</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="s">"--start-system-server"</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span> <span class="o">:</span> <span class="nb">false</span><span class="p">;</span>
+			<span class="n">setArgv0</span><span class="p">(</span><span class="n">argv0</span><span class="p">,</span> <span class="s">"zygote"</span><span class="p">);</span>
+			<span class="n">set_process_name</span><span class="p">(</span><span class="s">"zygote"</span><span class="p">);</span>
+			<span class="n">runtime</span><span class="p">.</span><span class="n">start</span><span class="p">(</span><span class="s">"com.android.internal.os.ZygoteInit"</span><span class="p">,</span>
+				<span class="n">startSystemServer</span><span class="p">);</span>
+		<span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+			<span class="n">set_process_name</span><span class="p">(</span><span class="n">argv0</span><span class="p">);</span>
+
+			<span class="n">runtime</span><span class="p">.</span><span class="n">mClassName</span> <span class="o">=</span> <span class="n">arg</span><span class="p">;</span>
+
+			<span class="c1">// Remainder of args get passed to startup class main()</span>
+			<span class="n">runtime</span><span class="p">.</span><span class="n">mArgC</span> <span class="o">=</span> <span class="n">argc</span><span class="o">-</span><span class="n">i</span><span class="p">;</span>
+			<span class="n">runtime</span><span class="p">.</span><span class="n">mArgV</span> <span class="o">=</span> <span class="n">argv</span><span class="o">+</span><span class="n">i</span><span class="p">;</span>
+
+			<span class="n">LOGV</span><span class="p">(</span><span class="s">"App process is starting with pid=%d, class=%s.</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span>
+				<span class="n">getpid</span><span class="p">(),</span> <span class="n">runtime</span><span class="p">.</span><span class="n">getClassName</span><span class="p">());</span>
+			<span class="n">runtime</span><span class="p">.</span><span class="n">start</span><span class="p">();</span>
+		<span class="p">}</span>
+	<span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+		<span class="n">LOG_ALWAYS_FATAL</span><span class="p">(</span><span class="s">"app_process: no class name or --zygote supplied."</span><span class="p">);</span>
+		<span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span> <span class="s">"Error: no class name or --zygote supplied.</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+		<span class="n">app_usage</span><span class="p">();</span>
+		<span class="k">return</span> <span class="mi">10</span><span class="p">;</span>
+	<span class="p">}</span>
+
+<span class="p">}</span></code></pre></figure>
+
+<p>关键代码就是runtime.start(“com.android.internal.os.ZygoteInit”,
+  startSystemServer)了。runtime是一个AppRuntime,它继承于AndroidRuntime。
+接着调用AndroidRuntime的start函数。</p>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><span class="cm">/*
+* Start the Android runtime.  This involves starting the virtual machine
+* and calling the "static void main(String[] args)" method in the class
+* named by "className".
+*/</span>
+<span class="kt">void</span> <span class="n">AndroidRuntime</span><span class="o">::</span><span class="n">start</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span><span class="o">*</span> <span class="n">className</span><span class="p">,</span> <span class="k">const</span> <span class="n">bool</span> <span class="n">startSystemServer</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="p">......</span>
+
+	<span class="kt">char</span><span class="o">*</span> <span class="n">slashClassName</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+	<span class="kt">char</span><span class="o">*</span> <span class="n">cp</span><span class="p">;</span>
+	<span class="n">JNIEnv</span><span class="o">*</span> <span class="n">env</span><span class="p">;</span>
+
+	<span class="p">......</span>
+
+	<span class="cm">/* start the virtual machine */</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">startVm</span><span class="p">(</span><span class="o">&amp;</span><span class="n">mJavaVM</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">env</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span>
+		<span class="k">goto</span> <span class="n">bail</span><span class="p">;</span>
+
+	<span class="cm">/*
+	* Register android functions.
+	*/</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">startReg</span><span class="p">(</span><span class="n">env</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+		<span class="n">LOGE</span><span class="p">(</span><span class="s">"Unable to register all android natives</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+		<span class="k">goto</span> <span class="n">bail</span><span class="p">;</span>
+	<span class="p">}</span>
+
+	<span class="cm">/*
+	* We want to call main() with a String array with arguments in it.
+	* At present we only have one argument, the class name.  Create an
+	* array to hold it.
+	*/</span>
+	<span class="n">jclass</span> <span class="n">stringClass</span><span class="p">;</span>
+	<span class="n">jobjectArray</span> <span class="n">strArray</span><span class="p">;</span>
+	<span class="n">jstring</span> <span class="n">classNameStr</span><span class="p">;</span>
+	<span class="n">jstring</span> <span class="n">startSystemServerStr</span><span class="p">;</span>
+	<span class="n">stringClass</span> <span class="o">=</span> <span class="n">env</span><span class="o">-&gt;</span><span class="n">FindClass</span><span class="p">(</span><span class="s">"java/lang/String"</span><span class="p">);</span>
+	<span class="n">assert</span><span class="p">(</span><span class="n">stringClass</span> <span class="o">!=</span> <span class="nb">NULL</span><span class="p">);</span>
+	<span class="n">strArray</span> <span class="o">=</span> <span class="n">env</span><span class="o">-&gt;</span><span class="n">NewObjectArray</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">stringClass</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">);</span>
+	<span class="n">assert</span><span class="p">(</span><span class="n">strArray</span> <span class="o">!=</span> <span class="nb">NULL</span><span class="p">);</span>
+	<span class="n">classNameStr</span> <span class="o">=</span> <span class="n">env</span><span class="o">-&gt;</span><span class="n">NewStringUTF</span><span class="p">(</span><span class="n">className</span><span class="p">);</span>
+	<span class="n">assert</span><span class="p">(</span><span class="n">classNameStr</span> <span class="o">!=</span> <span class="nb">NULL</span><span class="p">);</span>
+	<span class="n">env</span><span class="o">-&gt;</span><span class="n">SetObjectArrayElement</span><span class="p">(</span><span class="n">strArray</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">classNameStr</span><span class="p">);</span>
+	<span class="n">startSystemServerStr</span> <span class="o">=</span> <span class="n">env</span><span class="o">-&gt;</span><span class="n">NewStringUTF</span><span class="p">(</span><span class="n">startSystemServer</span> <span class="o">?</span>
+		<span class="s">"true"</span> <span class="o">:</span> <span class="s">"false"</span><span class="p">);</span>
+	<span class="n">env</span><span class="o">-&gt;</span><span class="n">SetObjectArrayElement</span><span class="p">(</span><span class="n">strArray</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">startSystemServerStr</span><span class="p">);</span>
+
+	<span class="cm">/*
+	* Start VM.  This thread becomes the main thread of the VM, and will
+	* not return until the VM exits.
+	*/</span>
+	<span class="n">jclass</span> <span class="n">startClass</span><span class="p">;</span>
+	<span class="n">jmethodID</span> <span class="n">startMeth</span><span class="p">;</span>
+
+	<span class="n">slashClassName</span> <span class="o">=</span> <span class="n">strdup</span><span class="p">(</span><span class="n">className</span><span class="p">);</span>
+	<span class="k">for</span> <span class="p">(</span><span class="n">cp</span> <span class="o">=</span> <span class="n">slashClassName</span><span class="p">;</span> <span class="o">*</span><span class="n">cp</span> <span class="o">!=</span> <span class="sc">'\0'</span><span class="p">;</span> <span class="n">cp</span><span class="o">++</span><span class="p">)</span>
+		<span class="k">if</span> <span class="p">(</span><span class="o">*</span><span class="n">cp</span> <span class="o">==</span> <span class="sc">'.'</span><span class="p">)</span>
+			<span class="o">*</span><span class="n">cp</span> <span class="o">=</span> <span class="sc">'/'</span><span class="p">;</span><span class="o">&lt;!*&gt;</span>
+
+	<span class="n">startClass</span> <span class="o">=</span> <span class="n">env</span><span class="o">-&gt;</span><span class="n">FindClass</span><span class="p">(</span><span class="n">slashClassName</span><span class="p">);</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">startClass</span> <span class="o">==</span> <span class="nb">NULL</span><span class="p">)</span> <span class="p">{</span>
+		<span class="p">......</span>
+	<span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+		<span class="n">startMeth</span> <span class="o">=</span> <span class="n">env</span><span class="o">-&gt;</span><span class="n">GetStaticMethodID</span><span class="p">(</span><span class="n">startClass</span><span class="p">,</span> <span class="s">"main"</span><span class="p">,</span>
+			<span class="s">"([Ljava/lang/String;)V"</span><span class="p">);</span>
+		<span class="k">if</span> <span class="p">(</span><span class="n">startMeth</span> <span class="o">==</span> <span class="nb">NULL</span><span class="p">)</span> <span class="p">{</span>
+			<span class="p">......</span>
+		<span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+			<span class="n">env</span><span class="o">-&gt;</span><span class="n">CallStaticVoidMethod</span><span class="p">(</span><span class="n">startClass</span><span class="p">,</span> <span class="n">startMeth</span><span class="p">,</span> <span class="n">strArray</span><span class="p">);</span>
+			<span class="p">......</span>
+		<span class="p">}</span>
+	<span class="p">}</span>
+
+	<span class="p">......</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>这个函数的作用是启动Android系统运行时库，它主要做了三件事情，一是调用函数startVM启动虚拟机，二是调用函数startReg注册JNI方法，三是调用了com.android.internal.os.ZygoteInit类的main函数.</p>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><span class="n">public</span> <span class="n">class</span> <span class="n">ZygoteInit</span> <span class="p">{</span>
+	<span class="p">......</span>
+
+	<span class="n">public</span> <span class="k">static</span> <span class="kt">void</span> <span class="n">main</span><span class="p">(</span><span class="n">String</span> <span class="n">argv</span><span class="p">[])</span> <span class="p">{</span>
+		<span class="n">try</span> <span class="p">{</span>
+			<span class="p">......</span>
+
+			<span class="n">registerZygoteSocket</span><span class="p">();</span>
+
+			<span class="p">......</span>
+
+			<span class="p">......</span>
+
+			<span class="k">if</span> <span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">].</span><span class="n">equals</span><span class="p">(</span><span class="s">"true"</span><span class="p">))</span> <span class="p">{</span>
+				<span class="n">startSystemServer</span><span class="p">();</span>
+			<span class="p">}</span> <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">].</span><span class="n">equals</span><span class="p">(</span><span class="s">"false"</span><span class="p">))</span> <span class="p">{</span>
+				<span class="p">......</span>
+			<span class="p">}</span>
+
+			<span class="p">......</span>
+
+			<span class="k">if</span> <span class="p">(</span><span class="n">ZYGOTE_FORK_MODE</span><span class="p">)</span> <span class="p">{</span>
+				<span class="p">......</span>
+			<span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+				<span class="n">runSelectLoopMode</span><span class="p">();</span>
+			<span class="p">}</span>
+
+			<span class="p">......</span>
+		<span class="p">}</span> <span class="n">catch</span> <span class="p">(</span><span class="n">MethodAndArgsCaller</span> <span class="n">caller</span><span class="p">)</span> <span class="p">{</span>
+			<span class="p">......</span>
+		<span class="p">}</span> <span class="n">catch</span> <span class="p">(</span><span class="n">RuntimeException</span> <span class="n">ex</span><span class="p">)</span> <span class="p">{</span>
+			<span class="p">......</span>
+		<span class="p">}</span>
+	<span class="p">}</span>
+
+	<span class="p">......</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>registerZygoteSocket生成了zygote进程/dev/zygote socket文件的LocalSocket对象，该
+对象用于与Ams沟通，属于服务端socket；</p>
+
+<p>startSystemServer()开启了android framework java层的服务守护进程SystemServer。
+main()开启serverThread去注册我们常用的ams,wms等java层服务。</p>
+
+<p>runSelectLoopMode()直接上代码吧，很好理解，也很经典！从此我们的zygote进程就能源源不断
+的响应Ams这个小婊砸啦。</p>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><span class="n">private</span> <span class="k">static</span> <span class="kt">void</span> <span class="nf">runSelectLoopMode</span><span class="p">()</span> <span class="n">throws</span> <span class="n">MethodAndArgsCaller</span> <span class="p">{</span>
+        <span class="n">ArrayList</span><span class="o">&lt;</span><span class="n">FileDescriptor</span><span class="o">&gt;</span> <span class="n">fds</span> <span class="o">=</span> <span class="n">new</span> <span class="n">ArrayList</span><span class="p">();</span>
+        <span class="n">ArrayList</span><span class="o">&lt;</span><span class="n">ZygoteConnection</span><span class="o">&gt;</span> <span class="n">peers</span> <span class="o">=</span> <span class="n">new</span> <span class="nf">ArrayList</span><span class="p">();</span>
+        <span class="n">FileDescriptor</span><span class="p">[]</span> <span class="n">fdArray</span> <span class="o">=</span> <span class="n">new</span> <span class="n">FileDescriptor</span><span class="p">[</span><span class="mi">4</span><span class="p">];</span>
+
+        <span class="n">fds</span><span class="p">.</span><span class="n">add</span><span class="p">(</span><span class="n">sServerSocket</span><span class="p">.</span><span class="n">getFileDescriptor</span><span class="p">());</span>
+        <span class="n">peers</span><span class="p">.</span><span class="n">add</span><span class="p">(</span><span class="n">null</span><span class="p">);</span>
+
+        <span class="kt">int</span> <span class="n">loopCount</span> <span class="o">=</span> <span class="n">GC_LOOP_COUNT</span><span class="p">;</span>
+        <span class="k">while</span> <span class="p">(</span><span class="nb">true</span><span class="p">)</span> <span class="p">{</span>
+            <span class="kt">int</span> <span class="n">index</span><span class="p">;</span>
+
+            <span class="cm">/*
+             * Call gc() before we block in select().
+             * It's work that has to be done anyway, and it's better
+             * to avoid making every child do it.  It will also
+             * madvise() any free memory as a side-effect.
+             *
+             * Don't call it every time, because walking the entire
+             * heap is a lot of overhead to free a few hundred bytes.
+             */</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">loopCount</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">gc</span><span class="p">();</span>
+                <span class="n">loopCount</span> <span class="o">=</span> <span class="n">GC_LOOP_COUNT</span><span class="p">;</span>
+            <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+                <span class="n">loopCount</span><span class="o">--</span><span class="p">;</span>
+            <span class="p">}</span>
+
+
+            <span class="n">try</span> <span class="p">{</span>
+                <span class="n">fdArray</span> <span class="o">=</span> <span class="n">fds</span><span class="p">.</span><span class="n">toArray</span><span class="p">(</span><span class="n">fdArray</span><span class="p">);</span>
+                <span class="n">index</span> <span class="o">=</span> <span class="n">selectReadable</span><span class="p">(</span><span class="n">fdArray</span><span class="p">);</span>
+            <span class="p">}</span> <span class="n">catch</span> <span class="p">(</span><span class="n">IOException</span> <span class="n">ex</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">throw</span> <span class="n">new</span> <span class="n">RuntimeException</span><span class="p">(</span><span class="s">"Error in select()"</span><span class="p">,</span> <span class="n">ex</span><span class="p">);</span>
+            <span class="p">}</span>
+
+            <span class="k">if</span> <span class="p">(</span><span class="n">index</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">throw</span> <span class="n">new</span> <span class="n">RuntimeException</span><span class="p">(</span><span class="s">"Error in select()"</span><span class="p">);</span>
+            <span class="p">}</span> <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="n">index</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">ZygoteConnection</span> <span class="n">newPeer</span> <span class="o">=</span> <span class="n">acceptCommandPeer</span><span class="p">();</span>
+                <span class="n">peers</span><span class="p">.</span><span class="n">add</span><span class="p">(</span><span class="n">newPeer</span><span class="p">);</span>
+                <span class="n">fds</span><span class="p">.</span><span class="n">add</span><span class="p">(</span><span class="n">newPeer</span><span class="p">.</span><span class="n">getFileDesciptor</span><span class="p">());</span>
+            <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+                <span class="n">boolean</span> <span class="n">done</span><span class="p">;</span>
+                <span class="n">done</span> <span class="o">=</span> <span class="n">peers</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="n">index</span><span class="p">).</span><span class="n">runOnce</span><span class="p">();</span>
+
+                <span class="k">if</span> <span class="p">(</span><span class="n">done</span><span class="p">)</span> <span class="p">{</span>
+                    <span class="n">peers</span><span class="p">.</span><span class="n">remove</span><span class="p">(</span><span class="n">index</span><span class="p">);</span>
+                    <span class="n">fds</span><span class="p">.</span><span class="n">remove</span><span class="p">(</span><span class="n">index</span><span class="p">);</span>
+                <span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+    <span class="err">}</span></code></pre></figure>
+
+:ET

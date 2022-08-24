@@ -1,0 +1,2 @@
+I"2<p>通过mWindowSession来完成Window的添加过程 ，mWindowSession的类型是IWindowSession，是一个Bindler对象，真正的实现类是Session，也就是Window的添加是一次IPC调用。(mWindowSession在ViewRootImpl的构造函数中通过WindowManagerGlobal.getWindowSession();创建)</p>
+:ET

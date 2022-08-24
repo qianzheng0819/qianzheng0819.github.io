@@ -1,0 +1,132 @@
+I"òD<p>1.Publication and Escape.Publishing an object means making it available to code outside of its current scope,such as by storing a reference to it where other code can find it, returning it from a nonprivate method, or passing it to a method in another class.An object that is published when it should not have been is said to have escaped;</p>
+
+<p>2.Neither the Java Language Specification nor the Java Memory Model formally defines immutability, but immutability is not equivalent to simply declaring all fields of an object final.An object whose fields are all final may still be mutable, since final fields can hold references to mutable objects.
+An object is immutable if:</p>
+<ul>
+  <li>Its state cannot be modified after construction;</li>
+  <li>All its fields are final;</li>
+  <li>It is properly constructed(the this reference does not escape during construction)</li>
+</ul>
+
+<p>3.Counter in Listing4.1 shows a typical example of this pattern.It encapsulates one state vailable,<code class="language-plaintext highlighter-rouge">value</code>, and all access to that state variable is through the methods of Counter, which are all synchronized.
+Listing4.1:</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="nd">@ThreadSafe</span>
+<span class="kd">public</span> <span class="kd">final</span> <span class="kd">class</span> <span class="nc">Counter</span> <span class="o">{</span>
+    <span class="nd">@GuardedBy</span><span class="o">(</span><span class="s">"this"</span><span class="o">)</span>  <span class="kd">private</span> <span class="kt">long</span> <span class="n">value</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+
+    <span class="kd">public</span> <span class="kd">synchronized</span> <span class="kt">long</span> <span class="nf">getValue</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="n">value</span><span class="o">;</span>
+    <span class="o">}</span>
+    <span class="kd">public</span> <span class="kd">synchronized</span> <span class="kt">long</span> <span class="nf">increment</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">value</span> <span class="o">==</span> <span class="nc">Long</span><span class="o">.</span><span class="na">MAX_VALUE</span><span class="o">)</span>
+            <span class="k">throw</span> <span class="k">new</span> <span class="nf">IllegalStateException</span><span class="o">(</span><span class="s">"counter overflow"</span><span class="o">);</span>
+        <span class="k">return</span> <span class="o">++</span><span class="n">value</span><span class="o">;</span>
+    <span class="o">}</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>Listing 4.3. Guarding State with a Private Lock.</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">public</span> <span class="kd">class</span> <span class="nc">PrivateLock</span> <span class="o">{</span>
+    <span class="kd">private</span> <span class="kd">final</span> <span class="nc">Object</span> <span class="n">myLock</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">Object</span><span class="o">();</span>
+    <span class="nd">@GuardedBy</span><span class="o">(</span><span class="s">"myLock"</span><span class="o">)</span> <span class="nc">Widget</span> <span class="n">widget</span><span class="o">;</span>
+
+    <span class="kt">void</span> <span class="nf">someMethod</span><span class="o">()</span> <span class="o">{</span>
+        <span class="kd">synchronized</span><span class="o">(</span><span class="n">myLock</span><span class="o">)</span> <span class="o">{</span>
+            <span class="c1">// Access or modify the state of widget</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>Listing 4.4. Monitor-based Vehicle Tracker Implementation</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="nd">@ThreadSafe</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">MonitorVehicleTracker</span> <span class="o">{</span>
+    <span class="nd">@GuardedBy</span><span class="o">(</span><span class="s">"this"</span><span class="o">)</span>
+    <span class="kd">private</span> <span class="kd">final</span> <span class="nc">Map</span><span class="o">&lt;</span><span class="nc">String</span><span class="o">,</span> <span class="nc">MutablePoint</span><span class="o">&gt;</span> <span class="n">locations</span><span class="o">;</span>
+
+    <span class="kd">public</span> <span class="nf">MonitorVehicleTracker</span><span class="o">(</span><span class="nc">Map</span><span class="o">&lt;</span><span class="nc">String</span><span class="o">,</span> <span class="nc">MutablePoint</span><span class="o">&gt;</span> <span class="n">locations</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">locations</span> <span class="o">=</span> <span class="n">deepCopy</span><span class="o">(</span><span class="n">locations</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kd">synchronized</span> <span class="nc">Map</span><span class="o">&lt;</span><span class="nc">String</span><span class="o">,</span> <span class="nc">MutablePoint</span><span class="o">&gt;</span> <span class="nf">getLocations</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="nf">deepCopy</span><span class="o">(</span><span class="n">locations</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kd">synchronized</span> <span class="nc">MutablePoint</span> <span class="nf">getLocation</span><span class="o">(</span><span class="nc">String</span> <span class="n">id</span><span class="o">)</span> <span class="o">{</span>
+        <span class="nc">MutablePoint</span> <span class="n">loc</span> <span class="o">=</span> <span class="n">locations</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">id</span><span class="o">);</span>
+        <span class="k">return</span> <span class="n">loc</span> <span class="o">==</span> <span class="kc">null</span> <span class="o">?</span> <span class="kc">null</span> <span class="o">:</span> <span class="k">new</span> <span class="nc">MutablePoint</span><span class="o">(</span><span class="n">loc</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kd">synchronized</span> <span class="kt">void</span> <span class="nf">setLocation</span><span class="o">(</span><span class="nc">String</span> <span class="n">id</span><span class="o">,</span> <span class="kt">int</span> <span class="n">x</span><span class="o">,</span> <span class="kt">int</span> <span class="n">y</span><span class="o">)</span> <span class="o">{</span>
+        <span class="nc">MutablePoint</span> <span class="n">loc</span> <span class="o">=</span> <span class="n">locations</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">id</span><span class="o">);</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">loc</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span>
+            <span class="k">throw</span> <span class="k">new</span> <span class="nf">IllegalArgumentException</span><span class="o">(</span><span class="s">"No such ID: "</span> <span class="o">+</span> <span class="n">id</span><span class="o">);</span>
+        <span class="n">loc</span><span class="o">.</span><span class="na">x</span> <span class="o">=</span> <span class="n">x</span><span class="o">;</span>
+        <span class="n">loc</span><span class="o">.</span><span class="na">y</span> <span class="o">=</span> <span class="n">y</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="kd">static</span> <span class="nc">Map</span><span class="o">&lt;</span><span class="nc">String</span><span class="o">,</span> <span class="nc">MutablePoint</span><span class="o">&gt;</span> <span class="nf">deepCopy</span><span class="o">(</span><span class="nc">Map</span><span class="o">&lt;</span><span class="nc">String</span><span class="o">,</span> <span class="nc">MutablePoint</span><span class="o">&gt;</span> <span class="n">m</span><span class="o">)</span> <span class="o">{</span>
+        <span class="nc">Map</span><span class="o">&lt;</span><span class="nc">String</span><span class="o">,</span> <span class="nc">MutablePoint</span><span class="o">&gt;</span> <span class="n">result</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">HashMap</span><span class="o">&lt;</span><span class="nc">String</span><span class="o">,</span> <span class="nc">MutablePoint</span><span class="o">&gt;();</span>
+        <span class="k">for</span> <span class="o">(</span><span class="nc">String</span> <span class="n">id</span> <span class="o">:</span> <span class="n">m</span><span class="o">.</span><span class="na">keySet</span><span class="o">())</span>
+            <span class="n">result</span><span class="o">.</span><span class="na">put</span><span class="o">(</span><span class="n">id</span><span class="o">,</span> <span class="k">new</span> <span class="nc">MutablePoint</span><span class="o">(</span><span class="n">m</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">id</span><span class="o">)));</span>
+        <span class="k">return</span> <span class="nc">Collections</span><span class="o">.</span><span class="na">unmodifiableMap</span><span class="o">(</span><span class="n">result</span><span class="o">);</span>
+    <span class="o">}</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>Listing 4.5. Mutable Point Class Similar to Java.awt.Point</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="nd">@NotThreadSafe</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">MutablePoint</span> <span class="o">{</span>
+    <span class="kd">public</span> <span class="kt">int</span> <span class="n">x</span><span class="o">,</span> <span class="n">y</span><span class="o">;</span>
+
+    <span class="kd">public</span> <span class="nf">MutablePoint</span><span class="o">()</span> <span class="o">{</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+    <span class="o">}</span>
+    <span class="kd">public</span> <span class="nf">MutablePoint</span><span class="o">(</span><span class="nc">MutablePoint</span> <span class="n">p</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">x</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="na">x</span><span class="o">;</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">y</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="na">y</span><span class="o">;</span>
+    <span class="o">}</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>Evne though MutablePoint is not thread-safe, the tracker class is.Neither the map nor any of the mutable points it contains is ever published. When we need to a return vehicle locations to callers, the appropriate values are copied using either the MutablePoint copy constructor or deepCopy, which createa a new Map whose valuse are copies of the keys and values from the old Map.</p>
+
+<p>Listing 4.7. Delegating Thread Safety to a ConcurrentHashMap</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="nd">@ThreadSafe</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">DelegatingVehicleTracker</span> <span class="o">{</span>
+    <span class="kd">private</span> <span class="kd">final</span> <span class="nc">ConcurrentMap</span><span class="o">&lt;</span><span class="nc">String</span><span class="o">,</span> <span class="nc">Point</span><span class="o">&gt;</span> <span class="n">locations</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="kd">final</span> <span class="nc">Map</span><span class="o">&lt;</span><span class="nc">String</span><span class="o">,</span> <span class="nc">Point</span><span class="o">&gt;</span> <span class="n">unmodifiableMap</span><span class="o">;</span>
+
+    <span class="kd">public</span> <span class="nf">DelegatingVehicleTracker</span><span class="o">(</span><span class="nc">Map</span><span class="o">&lt;</span><span class="nc">String</span><span class="o">,</span> <span class="nc">Point</span><span class="o">&gt;</span> <span class="n">points</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">locations</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">ConcurrentHashMap</span><span class="o">&lt;</span><span class="nc">String</span><span class="o">,</span> <span class="nc">Point</span><span class="o">&gt;(</span><span class="n">points</span><span class="o">);</span>
+        <span class="n">unmodifiableMap</span> <span class="o">=</span> <span class="nc">Collections</span><span class="o">.</span><span class="na">unmodifiableMap</span><span class="o">(</span><span class="n">locations</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="nc">Map</span><span class="o">&lt;</span><span class="nc">String</span><span class="o">,</span> <span class="nc">Point</span><span class="o">&gt;</span> <span class="nf">getLocations</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="n">unmodifiableMap</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="nc">Point</span> <span class="nf">getLocation</span><span class="o">(</span><span class="nc">String</span> <span class="n">id</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="n">locations</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">id</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">setLocation</span><span class="o">(</span><span class="nc">String</span> <span class="n">id</span><span class="o">,</span> <span class="kt">int</span> <span class="n">x</span><span class="o">,</span> <span class="kt">int</span> <span class="n">y</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">locations</span><span class="o">.</span><span class="na">replace</span><span class="o">(</span><span class="n">id</span><span class="o">,</span> <span class="k">new</span> <span class="nc">Point</span><span class="o">(</span><span class="n">x</span><span class="o">,</span> <span class="n">y</span><span class="o">))</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span>
+            <span class="k">throw</span> <span class="k">new</span> <span class="nf">IllegalArgumentException</span><span class="o">(</span><span class="s">"invalid vehicle name: "</span> <span class="o">+</span> <span class="n">id</span><span class="o">);</span>
+    <span class="o">}</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>4.If a class is composed of multiple independent thread-safe state variables and has no operations that have any invalid state transitions, then it can delegate thread safety to the underlying state variables.</p>
+
+<p>5.ConcurrentHashMap is a hash-based Map like HashMap, but it uses an entirely different locking strategy that offers better concurrency and scalability.Instead of synchronizing every method on a common lock,restricting access to a single thread at a time,it uses a finer-grained locking mechanism called lock striping to allow a greater degree of shared access.Arbitrarily many reading threads can access the map concurrently, readers can access the map concurrently with writers, and a limited number of writers can modify the map concurrently.The result is far higher throughput under concurrent access, with little performance penalty for single-threaded access.</p>
+
+<p>6.Timer and ScheduledThreadPoolExecutor</p>
+<ul>
+  <li>A Timer creates only a single thread for executing timeer tasks.</li>
+  <li>Another problem with Timer is that it behaves poorly if a TimeTask throws an unchecked exception.The Timer thread doesnâ€™t catch the exception,so an unchecked exception thrown from a TimerTask terminates the timer thread.</li>
+  <li>There is little reason to use Timer in Java5.0 or later.</li>
+  <li>If you need to build your own scheduling service,you may still be able to take advantage of the library by using a <code class="language-plaintext highlighter-rouge">DelayQueue</code>,a <code class="language-plaintext highlighter-rouge">BlockingQueue</code> implementation that provides the scheduling functionality of ScheduledThreadPoolExecutor.</li>
+</ul>
+:ET

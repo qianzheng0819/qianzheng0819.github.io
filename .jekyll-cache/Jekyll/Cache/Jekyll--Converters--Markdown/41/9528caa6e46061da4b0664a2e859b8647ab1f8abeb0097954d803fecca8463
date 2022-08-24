@@ -1,0 +1,608 @@
+I"�F<h3 id="前言"><strong>前言</strong></h3>
+<p>熟悉android源码的同学应该知道HttpUrlConnection的底层实现从android4.4开始就由httpclient <br />
+替换成了okhttp。所以在分析HttpUrlConnection源码的同时，也是在阅读okhttp的源码。分析的方法 <br />
+是先画出时序图，然后结合时序图去分析关键方法中的关键代码。</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="no">URL</span> <span class="n">url</span> <span class="o">=</span> <span class="k">new</span> <span class="no">URL</span><span class="o">(</span><span class="s">"http://yoururl.com"</span><span class="o">);</span>
+<span class="nc">HttpsURLConnection</span> <span class="n">conn</span> <span class="o">=</span> <span class="o">(</span><span class="nc">HttpsURLConnection</span><span class="o">)</span> <span class="n">url</span><span class="o">.</span><span class="na">openConnection</span><span class="o">();</span>
+<span class="n">conn</span><span class="o">.</span><span class="na">setReadTimeout</span><span class="o">(</span><span class="mi">10000</span><span class="o">);</span>
+<span class="n">conn</span><span class="o">.</span><span class="na">setConnectTimeout</span><span class="o">(</span><span class="mi">15000</span><span class="o">);</span>
+<span class="n">conn</span><span class="o">.</span><span class="na">setRequestMethod</span><span class="o">(</span><span class="s">"POST"</span><span class="o">);</span>
+<span class="n">conn</span><span class="o">.</span><span class="na">setDoInput</span><span class="o">(</span><span class="kc">true</span><span class="o">);</span>
+<span class="n">conn</span><span class="o">.</span><span class="na">setDoOutput</span><span class="o">(</span><span class="kc">true</span><span class="o">);</span>
+
+<span class="nc">List</span><span class="o">&lt;</span><span class="nc">NameValuePair</span><span class="o">&gt;</span> <span class="n">params</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">ArrayList</span><span class="o">&lt;</span><span class="nc">NameValuePair</span><span class="o">&gt;();</span>
+<span class="n">params</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="k">new</span> <span class="nc">BasicNameValuePair</span><span class="o">(</span><span class="s">"firstParam"</span><span class="o">,</span> <span class="n">paramValue1</span><span class="o">));</span>
+<span class="n">params</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="k">new</span> <span class="nc">BasicNameValuePair</span><span class="o">(</span><span class="s">"secondParam"</span><span class="o">,</span> <span class="n">paramValue2</span><span class="o">));</span>
+<span class="n">params</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="k">new</span> <span class="nc">BasicNameValuePair</span><span class="o">(</span><span class="s">"thirdParam"</span><span class="o">,</span> <span class="n">paramValue3</span><span class="o">));</span>
+
+<span class="nc">OutputStream</span> <span class="n">os</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="na">getOutputStream</span><span class="o">();</span>
+<span class="nc">BufferedWriter</span> <span class="n">writer</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">BufferedWriter</span><span class="o">(</span>
+        <span class="k">new</span> <span class="nf">OutputStreamWriter</span><span class="o">(</span><span class="n">os</span><span class="o">,</span> <span class="s">"UTF-8"</span><span class="o">));</span>
+<span class="n">writer</span><span class="o">.</span><span class="na">write</span><span class="o">(</span><span class="n">getQuery</span><span class="o">(</span><span class="n">params</span><span class="o">));</span>
+<span class="n">writer</span><span class="o">.</span><span class="na">flush</span><span class="o">();</span>
+<span class="n">writer</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+<span class="n">os</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+
+<span class="n">conn</span><span class="o">.</span><span class="na">connect</span><span class="o">();</span></code></pre></figure>
+
+<p>本文基于android4.4.4源码分析，各个版本代码略有不同。</p>
+
+<hr />
+
+<h3 id="时序图"><strong>时序图</strong></h3>
+<p><img src="/assets/images/2021-pic/p4.png" alt="p" /></p>
+
+<h3 id="关键方法"><strong>关键方法</strong></h3>
+<p><strong>1.new URL(String spec)</strong>
+<img src="/assets/images/2021-pic/p1.jpg" alt="p1" /></p>
+
+<p><strong>2.setupStreamHandler()</strong>
+<img src="/assets/images/2021-pic/p2.png" alt="p" /><br />
+可以看到选择的是HttpHandler</p>
+
+<p><strong>13.initHttpEngine()</strong>
+<img src="/assets/images/2021-pic/p3.png" alt="p" /></p>
+
+<p><strong>14.execute(false)</strong></p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="cm">/**
+ * Sends a request and optionally reads a response. Returns true if the
+ * request was successfully executed, and false if the request can be
+ * retried. Throws an exception if the request failed permanently.
+ */</span>
+<span class="kd">private</span> <span class="kt">boolean</span> <span class="nf">execute</span><span class="o">(</span><span class="kt">boolean</span> <span class="n">readResponse</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">IOException</span> <span class="o">{</span>
+  <span class="k">try</span> <span class="o">{</span>
+    <span class="n">httpEngine</span><span class="o">.</span><span class="na">sendRequest</span><span class="o">();</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">readResponse</span><span class="o">)</span> <span class="o">{</span>
+      <span class="n">httpEngine</span><span class="o">.</span><span class="na">readResponse</span><span class="o">();</span>
+    <span class="o">}</span>
+
+    <span class="k">return</span> <span class="kc">true</span><span class="o">;</span>
+  <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">IOException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+    <span class="o">...</span>
+<span class="o">}</span></code></pre></figure>
+
+<p><strong>15.sendRequest()</strong></p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">public</span> <span class="kd">final</span> <span class="kt">void</span> <span class="nf">sendRequest</span><span class="o">()</span> <span class="kd">throws</span> <span class="nc">IOException</span> <span class="o">{</span>
+  <span class="k">if</span> <span class="o">(</span><span class="n">responseSource</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">return</span><span class="o">;</span>
+  <span class="o">}</span>
+
+  <span class="n">prepareRawRequestHeaders</span><span class="o">();</span> <span class="c1">// 加载常用头部，"Keep-Alive"，"gzip"等，加载cookie</span>
+  <span class="n">initResponseSource</span><span class="o">();</span>
+  <span class="nc">OkResponseCache</span> <span class="n">responseCache</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="na">getOkResponseCache</span><span class="o">();</span>
+  <span class="k">if</span> <span class="o">(</span><span class="n">responseCache</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+    <span class="n">responseCache</span><span class="o">.</span><span class="na">trackResponse</span><span class="o">(</span><span class="n">responseSource</span><span class="o">);</span>
+  <span class="o">}</span>
+
+  <span class="c1">// The raw response source may require the network, but the request</span>
+  <span class="c1">// headers may forbid network use. In that case, dispose of the network</span>
+  <span class="c1">// response and use a GATEWAY_TIMEOUT response instead, as specified</span>
+  <span class="c1">// by http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.9.4.</span>
+  <span class="k">if</span> <span class="o">(</span><span class="n">requestHeaders</span><span class="o">.</span><span class="na">isOnlyIfCached</span><span class="o">()</span> <span class="o">&amp;&amp;</span> <span class="n">responseSource</span><span class="o">.</span><span class="na">requiresConnection</span><span class="o">())</span> <span class="o">{</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">responseSource</span> <span class="o">==</span> <span class="nc">ResponseSource</span><span class="o">.</span><span class="na">CONDITIONAL_CACHE</span><span class="o">)</span> <span class="o">{</span>
+      <span class="nc">Util</span><span class="o">.</span><span class="na">closeQuietly</span><span class="o">(</span><span class="n">cachedResponseBody</span><span class="o">);</span>
+    <span class="o">}</span>
+    <span class="k">this</span><span class="o">.</span><span class="na">responseSource</span> <span class="o">=</span> <span class="nc">ResponseSource</span><span class="o">.</span><span class="na">CACHE</span><span class="o">;</span>
+    <span class="k">this</span><span class="o">.</span><span class="na">cacheResponse</span> <span class="o">=</span> <span class="no">GATEWAY_TIMEOUT_RESPONSE</span><span class="o">;</span>
+    <span class="nc">RawHeaders</span> <span class="n">rawResponseHeaders</span> <span class="o">=</span> <span class="nc">RawHeaders</span><span class="o">.</span><span class="na">fromMultimap</span><span class="o">(</span><span class="n">cacheResponse</span><span class="o">.</span><span class="na">getHeaders</span><span class="o">(),</span> <span class="kc">true</span><span class="o">);</span>
+    <span class="n">setResponse</span><span class="o">(</span><span class="k">new</span> <span class="nc">ResponseHeaders</span><span class="o">(</span><span class="n">uri</span><span class="o">,</span> <span class="n">rawResponseHeaders</span><span class="o">),</span> <span class="n">cacheResponse</span><span class="o">.</span><span class="na">getBody</span><span class="o">());</span>
+  <span class="o">}</span>
+
+  <span class="k">if</span> <span class="o">(</span><span class="n">responseSource</span><span class="o">.</span><span class="na">requiresConnection</span><span class="o">())</span> <span class="o">{</span>
+    <span class="n">sendSocketRequest</span><span class="o">();</span>
+  <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">connection</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+    <span class="n">client</span><span class="o">.</span><span class="na">getConnectionPool</span><span class="o">().</span><span class="na">recycle</span><span class="o">(</span><span class="n">connection</span><span class="o">);</span>
+    <span class="n">connection</span> <span class="o">=</span> <span class="kc">null</span><span class="o">;</span>
+  <span class="o">}</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>prepareRawRequestHeaders(); // 加载常用头部，”Keep-Alive”，”gzip”等，加载cookie</p>
+
+<p>仔细看下initResponseSource()的源码</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="cm">/**
+ * Initialize the source for this response. It may be corrected later if the
+ * request headers forbids network use.
+ */</span>
+<span class="kd">private</span> <span class="kt">void</span> <span class="nf">initResponseSource</span><span class="o">()</span> <span class="kd">throws</span> <span class="nc">IOException</span> <span class="o">{</span>
+  <span class="n">responseSource</span> <span class="o">=</span> <span class="nc">ResponseSource</span><span class="o">.</span><span class="na">NETWORK</span><span class="o">;</span> <span class="c1">// 设置responseSource为从网络获取</span>
+  <span class="k">if</span> <span class="o">(!</span><span class="n">policy</span><span class="o">.</span><span class="na">getUseCaches</span><span class="o">())</span> <span class="k">return</span><span class="o">;</span> <span class="c1">// 禁止使用缓存，return</span>
+
+  <span class="nc">OkResponseCache</span> <span class="n">responseCache</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="na">getOkResponseCache</span><span class="o">();</span> <span class="c1">// 获取本地缓存</span>
+  <span class="k">if</span> <span class="o">(</span><span class="n">responseCache</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span> <span class="k">return</span><span class="o">;</span> <span class="c1">// 缓存为空，则返回</span>
+
+  <span class="nc">CacheResponse</span> <span class="n">candidate</span> <span class="o">=</span> <span class="n">responseCache</span><span class="o">.</span><span class="na">get</span><span class="o">(</span>
+      <span class="n">uri</span><span class="o">,</span> <span class="n">method</span><span class="o">,</span> <span class="n">requestHeaders</span><span class="o">.</span><span class="na">getHeaders</span><span class="o">().</span><span class="na">toMultimap</span><span class="o">(</span><span class="kc">false</span><span class="o">));</span> <span class="c1">// 根据uri,method作为key,获取cache候选人</span>
+  <span class="k">if</span> <span class="o">(</span><span class="n">candidate</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span> <span class="k">return</span><span class="o">;</span>
+
+  <span class="nc">Map</span><span class="o">&lt;</span><span class="nc">String</span><span class="o">,</span> <span class="nc">List</span><span class="o">&lt;</span><span class="nc">String</span><span class="o">&gt;&gt;</span> <span class="n">responseHeadersMap</span> <span class="o">=</span> <span class="n">candidate</span><span class="o">.</span><span class="na">getHeaders</span><span class="o">();</span> <span class="c1">// 获取缓存的头部</span>
+  <span class="n">cachedResponseBody</span> <span class="o">=</span> <span class="n">candidate</span><span class="o">.</span><span class="na">getBody</span><span class="o">();</span> <span class="c1">// 获取缓存的身部</span>
+  <span class="k">if</span> <span class="o">(!</span><span class="n">acceptCacheResponseType</span><span class="o">(</span><span class="n">candidate</span><span class="o">)</span>
+      <span class="o">||</span> <span class="n">responseHeadersMap</span> <span class="o">==</span> <span class="kc">null</span>
+      <span class="o">||</span> <span class="n">cachedResponseBody</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+    <span class="nc">Util</span><span class="o">.</span><span class="na">closeQuietly</span><span class="o">(</span><span class="n">cachedResponseBody</span><span class="o">);</span> <span class="c1">// 关闭cachedResponseBody这个inputStream</span>
+    <span class="k">return</span><span class="o">;</span>
+  <span class="o">}</span>
+
+  <span class="nc">RawHeaders</span> <span class="n">rawResponseHeaders</span> <span class="o">=</span> <span class="nc">RawHeaders</span><span class="o">.</span><span class="na">fromMultimap</span><span class="o">(</span><span class="n">responseHeadersMap</span><span class="o">,</span> <span class="kc">true</span><span class="o">);</span>
+  <span class="n">cachedResponseHeaders</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">ResponseHeaders</span><span class="o">(</span><span class="n">uri</span><span class="o">,</span> <span class="n">rawResponseHeaders</span><span class="o">);</span>
+  <span class="kt">long</span> <span class="n">now</span> <span class="o">=</span> <span class="nc">System</span><span class="o">.</span><span class="na">currentTimeMillis</span><span class="o">();</span>
+  <span class="k">this</span><span class="o">.</span><span class="na">responseSource</span> <span class="o">=</span> <span class="n">cachedResponseHeaders</span><span class="o">.</span><span class="na">chooseResponseSource</span><span class="o">(</span><span class="n">now</span><span class="o">,</span> <span class="n">requestHeaders</span><span class="o">);</span>
+  <span class="k">if</span> <span class="o">(</span><span class="n">responseSource</span> <span class="o">==</span> <span class="nc">ResponseSource</span><span class="o">.</span><span class="na">CACHE</span><span class="o">)</span> <span class="o">{</span> <span class="c1">// 如果是缓存类型，直接setResponse</span>
+    <span class="k">this</span><span class="o">.</span><span class="na">cacheResponse</span> <span class="o">=</span> <span class="n">candidate</span><span class="o">;</span>
+    <span class="n">setResponse</span><span class="o">(</span><span class="n">cachedResponseHeaders</span><span class="o">,</span> <span class="n">cachedResponseBody</span><span class="o">);</span>
+  <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">responseSource</span> <span class="o">==</span> <span class="nc">ResponseSource</span><span class="o">.</span><span class="na">CONDITIONAL_CACHE</span><span class="o">)</span> <span class="o">{</span> <span class="c1">//如果是需要验证的缓存类型，则只是记录cacheResponse</span>
+    <span class="k">this</span><span class="o">.</span><span class="na">cacheResponse</span> <span class="o">=</span> <span class="n">candidate</span><span class="o">;</span>
+  <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">responseSource</span> <span class="o">==</span> <span class="nc">ResponseSource</span><span class="o">.</span><span class="na">NETWORK</span><span class="o">)</span> <span class="o">{</span> <span class="c1">// 不支持缓存，关闭cachedResponseBody这个inputStream</span>
+    <span class="nc">Util</span><span class="o">.</span><span class="na">closeQuietly</span><span class="o">(</span><span class="n">cachedResponseBody</span><span class="o">);</span>
+  <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+    <span class="k">throw</span> <span class="k">new</span> <span class="nf">AssertionError</span><span class="o">();</span>
+  <span class="o">}</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>client.getOkResponseCache()源码分析，其中client是okHttpClient</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">public</span> <span class="nc">OkResponseCache</span> <span class="nf">getOkResponseCache</span><span class="o">()</span> <span class="o">{</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">responseCache</span> <span class="k">instanceof</span> <span class="nc">HttpResponseCache</span><span class="o">)</span> <span class="o">{</span>
+      <span class="k">return</span> <span class="o">((</span><span class="nc">HttpResponseCache</span><span class="o">)</span> <span class="n">responseCache</span><span class="o">).</span><span class="na">okResponseCache</span><span class="o">;</span>
+    <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">responseCache</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+      <span class="k">return</span> <span class="k">new</span> <span class="nf">OkResponseCacheAdapter</span><span class="o">(</span><span class="n">responseCache</span><span class="o">);</span>
+    <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+      <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+    <span class="o">}</span>
+  <span class="o">}</span></code></pre></figure>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">public</span> <span class="kd">final</span> <span class="kd">class</span> <span class="nc">HttpResponseCache</span> <span class="kd">extends</span> <span class="nc">ResponseCache</span> <span class="kd">implements</span> <span class="nc">Closeable</span> <span class="o">{</span>
+
+    <span class="kd">private</span> <span class="kd">final</span> <span class="n">com</span><span class="o">.</span><span class="na">android</span><span class="o">.</span><span class="na">okhttp</span><span class="o">.</span><span class="na">HttpResponseCache</span> <span class="n">delegate</span><span class="o">;</span>
+
+    <span class="kd">private</span> <span class="nf">HttpResponseCache</span><span class="o">(</span><span class="n">com</span><span class="o">.</span><span class="na">android</span><span class="o">.</span><span class="na">okhttp</span><span class="o">.</span><span class="na">HttpResponseCache</span> <span class="n">delegate</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">delegate</span> <span class="o">=</span> <span class="n">delegate</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="cm">/**
+     * Returns the currently-installed {@code HttpResponseCache}, or null if
+     * there is no cache installed or it is not a {@code HttpResponseCache}.
+     */</span>
+    <span class="kd">public</span> <span class="kd">static</span> <span class="nc">HttpResponseCache</span> <span class="nf">getInstalled</span><span class="o">()</span> <span class="o">{</span>
+        <span class="nc">ResponseCache</span> <span class="n">installed</span> <span class="o">=</span> <span class="nc">ResponseCache</span><span class="o">.</span><span class="na">getDefault</span><span class="o">();</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">installed</span> <span class="k">instanceof</span> <span class="n">com</span><span class="o">.</span><span class="na">android</span><span class="o">.</span><span class="na">okhttp</span><span class="o">.</span><span class="na">HttpResponseCache</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="nf">HttpResponseCache</span><span class="o">(</span>
+                    <span class="o">(</span><span class="n">com</span><span class="o">.</span><span class="na">android</span><span class="o">.</span><span class="na">okhttp</span><span class="o">.</span><span class="na">HttpResponseCache</span><span class="o">)</span> <span class="n">installed</span><span class="o">);</span>
+        <span class="o">}</span>
+
+        <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="cm">/**
+     * Creates a new HTTP response cache and {@link ResponseCache#setDefault
+     * sets it} as the system default cache.
+     *
+     * @param directory the directory to hold cache data.
+     * @param maxSize the maximum size of the cache in bytes.
+     * @return the newly-installed cache
+     * @throws IOException if {@code directory} cannot be used for this cache.
+     *     Most applications should respond to this exception by logging a
+     *     warning.
+     */</span>
+    <span class="kd">public</span> <span class="kd">static</span> <span class="nc">HttpResponseCache</span> <span class="nf">install</span><span class="o">(</span><span class="nc">File</span> <span class="n">directory</span><span class="o">,</span> <span class="kt">long</span> <span class="n">maxSize</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">IOException</span> <span class="o">{</span>
+        <span class="nc">ResponseCache</span> <span class="n">installed</span> <span class="o">=</span> <span class="nc">ResponseCache</span><span class="o">.</span><span class="na">getDefault</span><span class="o">();</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">installed</span> <span class="k">instanceof</span> <span class="n">com</span><span class="o">.</span><span class="na">android</span><span class="o">.</span><span class="na">okhttp</span><span class="o">.</span><span class="na">HttpResponseCache</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">com</span><span class="o">.</span><span class="na">android</span><span class="o">.</span><span class="na">okhttp</span><span class="o">.</span><span class="na">HttpResponseCache</span> <span class="n">installedCache</span> <span class="o">=</span>
+                    <span class="o">(</span><span class="n">com</span><span class="o">.</span><span class="na">android</span><span class="o">.</span><span class="na">okhttp</span><span class="o">.</span><span class="na">HttpResponseCache</span><span class="o">)</span> <span class="n">installed</span><span class="o">;</span>
+            <span class="c1">// don't close and reopen if an equivalent cache is already installed</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">installedCache</span><span class="o">.</span><span class="na">getDirectory</span><span class="o">().</span><span class="na">equals</span><span class="o">(</span><span class="n">directory</span><span class="o">)</span>
+                    <span class="o">&amp;&amp;</span> <span class="n">installedCache</span><span class="o">.</span><span class="na">getMaxSize</span><span class="o">()</span> <span class="o">==</span> <span class="n">maxSize</span>
+                    <span class="o">&amp;&amp;</span> <span class="o">!</span><span class="n">installedCache</span><span class="o">.</span><span class="na">isClosed</span><span class="o">())</span> <span class="o">{</span>
+                <span class="k">return</span> <span class="k">new</span> <span class="nf">HttpResponseCache</span><span class="o">(</span><span class="n">installedCache</span><span class="o">);</span>
+            <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+                <span class="c1">// The HttpResponseCache that owns this object is about to be replaced.</span>
+                <span class="n">installedCache</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+            <span class="o">}</span>
+        <span class="o">}</span>
+
+        <span class="n">com</span><span class="o">.</span><span class="na">android</span><span class="o">.</span><span class="na">okhttp</span><span class="o">.</span><span class="na">HttpResponseCache</span> <span class="n">responseCache</span> <span class="o">=</span>
+                <span class="k">new</span> <span class="n">com</span><span class="o">.</span><span class="na">android</span><span class="o">.</span><span class="na">okhttp</span><span class="o">.</span><span class="na">HttpResponseCache</span><span class="o">(</span><span class="n">directory</span><span class="o">,</span> <span class="n">maxSize</span><span class="o">);</span>
+        <span class="nc">ResponseCache</span><span class="o">.</span><span class="na">setDefault</span><span class="o">(</span><span class="n">responseCache</span><span class="o">);</span>
+        <span class="k">return</span> <span class="k">new</span> <span class="nf">HttpResponseCache</span><span class="o">(</span><span class="n">responseCache</span><span class="o">);</span>
+    <span class="o">}</span></code></pre></figure>
+
+<p>这里使用了代理模式，android.net.http.HttpResponseCache对象代理了com.squareup.okhttp.HttpResponseCache
+对象，真正的实现类是由com.squareup.okhttp.HttpResponseCache完成。</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="cm">/**
+   * Although this class only exposes the limited ResponseCache API, it
+   * implements the full OkResponseCache interface. This field is used as a
+   * package private handle to the complete implementation. It delegates to
+   * public and private members of this type.
+   */</span>
+  <span class="kd">final</span> <span class="nc">OkResponseCache</span> <span class="n">okResponseCache</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">OkResponseCache</span><span class="o">()</span> <span class="o">{</span>
+    <span class="nd">@Override</span> <span class="kd">public</span> <span class="nc">CacheResponse</span> <span class="nf">get</span><span class="o">(</span><span class="no">URI</span> <span class="n">uri</span><span class="o">,</span> <span class="nc">String</span> <span class="n">requestMethod</span><span class="o">,</span>
+        <span class="nc">Map</span><span class="o">&lt;</span><span class="nc">String</span><span class="o">,</span> <span class="nc">List</span><span class="o">&lt;</span><span class="nc">String</span><span class="o">&gt;&gt;</span> <span class="n">requestHeaders</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">IOException</span> <span class="o">{</span>
+      <span class="k">return</span> <span class="nc">HttpResponseCache</span><span class="o">.</span><span class="na">this</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">uri</span><span class="o">,</span> <span class="n">requestMethod</span><span class="o">,</span> <span class="n">requestHeaders</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Override</span> <span class="kd">public</span> <span class="nc">CacheRequest</span> <span class="nf">put</span><span class="o">(</span><span class="no">URI</span> <span class="n">uri</span><span class="o">,</span> <span class="nc">URLConnection</span> <span class="n">connection</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">IOException</span> <span class="o">{</span>
+      <span class="k">return</span> <span class="nc">HttpResponseCache</span><span class="o">.</span><span class="na">this</span><span class="o">.</span><span class="na">put</span><span class="o">(</span><span class="n">uri</span><span class="o">,</span> <span class="n">connection</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Override</span> <span class="kd">public</span> <span class="kt">void</span> <span class="nf">maybeRemove</span><span class="o">(</span><span class="nc">String</span> <span class="n">requestMethod</span><span class="o">,</span> <span class="no">URI</span> <span class="n">uri</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">IOException</span> <span class="o">{</span>
+      <span class="nc">HttpResponseCache</span><span class="o">.</span><span class="na">this</span><span class="o">.</span><span class="na">maybeRemove</span><span class="o">(</span><span class="n">requestMethod</span><span class="o">,</span> <span class="n">uri</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Override</span> <span class="kd">public</span> <span class="kt">void</span> <span class="nf">update</span><span class="o">(</span>
+        <span class="nc">CacheResponse</span> <span class="n">conditionalCacheHit</span><span class="o">,</span> <span class="nc">HttpURLConnection</span> <span class="n">connection</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">IOException</span> <span class="o">{</span>
+      <span class="nc">HttpResponseCache</span><span class="o">.</span><span class="na">this</span><span class="o">.</span><span class="na">update</span><span class="o">(</span><span class="n">conditionalCacheHit</span><span class="o">,</span> <span class="n">connection</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Override</span> <span class="kd">public</span> <span class="kt">void</span> <span class="nf">trackConditionalCacheHit</span><span class="o">()</span> <span class="o">{</span>
+      <span class="nc">HttpResponseCache</span><span class="o">.</span><span class="na">this</span><span class="o">.</span><span class="na">trackConditionalCacheHit</span><span class="o">();</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Override</span> <span class="kd">public</span> <span class="kt">void</span> <span class="nf">trackResponse</span><span class="o">(</span><span class="nc">ResponseSource</span> <span class="n">source</span><span class="o">)</span> <span class="o">{</span>
+      <span class="nc">HttpResponseCache</span><span class="o">.</span><span class="na">this</span><span class="o">.</span><span class="na">trackResponse</span><span class="o">(</span><span class="n">source</span><span class="o">);</span>
+    <span class="o">}</span>
+  <span class="o">};</span>
+
+  <span class="kd">public</span> <span class="nf">HttpResponseCache</span><span class="o">(</span><span class="nc">File</span> <span class="n">directory</span><span class="o">,</span> <span class="kt">long</span> <span class="n">maxSize</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">IOException</span> <span class="o">{</span> <span class="c1">// HttpResponseCache使用硬盘作为缓存介质</span>
+    <span class="n">cache</span> <span class="o">=</span> <span class="nc">DiskLruCache</span><span class="o">.</span><span class="na">open</span><span class="o">(</span><span class="n">directory</span><span class="o">,</span> <span class="no">VERSION</span><span class="o">,</span> <span class="no">ENTRY_COUNT</span><span class="o">,</span> <span class="n">maxSize</span><span class="o">);</span>
+  <span class="o">}</span></code></pre></figure>
+
+<p>可以看出okResponseCache代理了HttpResponseCache.this，也是一个代理模式。所以真正干事的还是com.squareup.okhttp.HttpResponseCache.<br />
+继续看initResponseSource()代码，代码的注释已经讲的很清楚了。基本就是缓存有效，就赋值给HttpEngine的cacheResponse field.</p>
+
+<p><strong>18.RouteSelector.next()</strong></p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">public</span> <span class="nc">Connection</span> <span class="nf">next</span><span class="o">(</span><span class="nc">String</span> <span class="n">method</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">IOException</span> <span class="o">{</span>
+   <span class="c1">// Always prefer pooled connections over new connections.</span>
+   <span class="k">for</span> <span class="o">(</span><span class="nc">Connection</span> <span class="n">pooled</span><span class="o">;</span> <span class="o">(</span><span class="n">pooled</span> <span class="o">=</span> <span class="n">pool</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">address</span><span class="o">))</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">;</span> <span class="o">)</span> <span class="o">{</span>
+     <span class="k">if</span> <span class="o">(</span><span class="n">method</span><span class="o">.</span><span class="na">equals</span><span class="o">(</span><span class="s">"GET"</span><span class="o">)</span> <span class="o">||</span> <span class="n">pooled</span><span class="o">.</span><span class="na">isReadable</span><span class="o">())</span> <span class="k">return</span> <span class="n">pooled</span><span class="o">;</span>
+     <span class="n">pooled</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+   <span class="o">}</span>
+
+   <span class="c1">// Compute the next route to attempt.</span>
+   <span class="c1">// 这一段代码里比较绕，各种bool值来控制程序流向，具体要仔细看代码，但是没有太大意义。</span>
+   <span class="c1">// 具体来说就是实现了多host,多代理的循环尝试方案。在后续的递归next(method)进行递归尝试。</span>
+   <span class="k">if</span> <span class="o">(!</span><span class="n">hasNextTlsMode</span><span class="o">())</span> <span class="o">{</span>
+     <span class="k">if</span> <span class="o">(!</span><span class="n">hasNextInetSocketAddress</span><span class="o">())</span> <span class="o">{</span>
+       <span class="k">if</span> <span class="o">(!</span><span class="n">hasNextProxy</span><span class="o">())</span> <span class="o">{</span>
+         <span class="k">if</span> <span class="o">(!</span><span class="n">hasNextPostponed</span><span class="o">())</span> <span class="o">{</span>
+           <span class="k">throw</span> <span class="k">new</span> <span class="nf">NoSuchElementException</span><span class="o">();</span>
+         <span class="o">}</span>
+         <span class="k">return</span> <span class="k">new</span> <span class="nf">Connection</span><span class="o">(</span><span class="n">nextPostponed</span><span class="o">());</span>
+       <span class="o">}</span>
+       <span class="n">lastProxy</span> <span class="o">=</span> <span class="n">nextProxy</span><span class="o">();</span>
+       <span class="n">resetNextInetSocketAddress</span><span class="o">(</span><span class="n">lastProxy</span><span class="o">);</span>
+     <span class="o">}</span>
+     <span class="n">lastInetSocketAddress</span> <span class="o">=</span> <span class="n">nextInetSocketAddress</span><span class="o">();</span>
+     <span class="n">resetNextTlsMode</span><span class="o">();</span>
+   <span class="o">}</span>
+
+   <span class="kt">boolean</span> <span class="n">modernTls</span> <span class="o">=</span> <span class="n">nextTlsMode</span><span class="o">()</span> <span class="o">==</span> <span class="no">TLS_MODE_MODERN</span><span class="o">;</span>
+   <span class="nc">Route</span> <span class="n">route</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">Route</span><span class="o">(</span><span class="n">address</span><span class="o">,</span> <span class="n">lastProxy</span><span class="o">,</span> <span class="n">lastInetSocketAddress</span><span class="o">,</span> <span class="n">modernTls</span><span class="o">);</span>
+   <span class="k">if</span> <span class="o">(</span><span class="n">routeDatabase</span><span class="o">.</span><span class="na">shouldPostpone</span><span class="o">(</span><span class="n">route</span><span class="o">))</span> <span class="o">{</span>
+     <span class="n">postponedRoutes</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">route</span><span class="o">);</span>
+     <span class="c1">// We will only recurse in order to skip previously failed routes. They will be</span>
+     <span class="c1">// tried last.</span>
+     <span class="k">return</span> <span class="nf">next</span><span class="o">(</span><span class="n">method</span><span class="o">);</span>
+   <span class="o">}</span>
+
+   <span class="k">return</span> <span class="k">new</span> <span class="nf">Connection</span><span class="o">(</span><span class="n">route</span><span class="o">);</span>
+ <span class="o">}</span></code></pre></figure>
+
+<p>先看pooled.isReadable()的源码，pooled是Connection实例</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="cm">/**
+   * Returns true if we are confident that we can read data from this
+   * connection. This is more expensive and more accurate than {@link
+   * #isAlive()}; callers should check {@link #isAlive()} first.
+   */</span>
+  <span class="kd">public</span> <span class="kt">boolean</span> <span class="nf">isReadable</span><span class="o">()</span> <span class="o">{</span>
+    <span class="k">if</span> <span class="o">(!(</span><span class="n">in</span> <span class="k">instanceof</span> <span class="nc">BufferedInputStream</span><span class="o">))</span> <span class="o">{</span>
+      <span class="k">return</span> <span class="kc">true</span><span class="o">;</span> <span class="c1">// Optimistic.</span>
+    <span class="o">}</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">isSpdy</span><span class="o">())</span> <span class="o">{</span>
+      <span class="k">return</span> <span class="kc">true</span><span class="o">;</span> <span class="c1">// Optimistic. We can't test SPDY because its streams are in use.</span>
+    <span class="o">}</span>
+    <span class="nc">BufferedInputStream</span> <span class="n">bufferedInputStream</span> <span class="o">=</span> <span class="o">(</span><span class="nc">BufferedInputStream</span><span class="o">)</span> <span class="n">in</span><span class="o">;</span>
+    <span class="k">try</span> <span class="o">{</span>
+      <span class="kt">int</span> <span class="n">readTimeout</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="na">getSoTimeout</span><span class="o">();</span>
+      <span class="k">try</span> <span class="o">{</span>
+        <span class="n">socket</span><span class="o">.</span><span class="na">setSoTimeout</span><span class="o">(</span><span class="mi">1</span><span class="o">);</span>
+        <span class="n">bufferedInputStream</span><span class="o">.</span><span class="na">mark</span><span class="o">(</span><span class="mi">1</span><span class="o">);</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">bufferedInputStream</span><span class="o">.</span><span class="na">read</span><span class="o">()</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="o">)</span> <span class="o">{</span>
+          <span class="k">return</span> <span class="kc">false</span><span class="o">;</span> <span class="c1">// Stream is exhausted; socket is closed.</span>
+        <span class="o">}</span>
+        <span class="n">bufferedInputStream</span><span class="o">.</span><span class="na">reset</span><span class="o">();</span>
+        <span class="k">return</span> <span class="kc">true</span><span class="o">;</span>
+      <span class="o">}</span> <span class="k">finally</span> <span class="o">{</span>
+        <span class="n">socket</span><span class="o">.</span><span class="na">setSoTimeout</span><span class="o">(</span><span class="n">readTimeout</span><span class="o">);</span>
+      <span class="o">}</span>
+    <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">SocketTimeoutException</span> <span class="n">ignored</span><span class="o">)</span> <span class="o">{</span>
+      <span class="k">return</span> <span class="kc">true</span><span class="o">;</span> <span class="c1">// Read timed out; socket is good.</span>
+    <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">IOException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+      <span class="k">return</span> <span class="kc">false</span><span class="o">;</span> <span class="c1">// Couldn't read; socket is closed.</span>
+    <span class="o">}</span>
+  <span class="o">}</span></code></pre></figure>
+
+<p>isReadable调用bufferedInputStream.mark(1)，然后去读bufferedInputStream,看是否超时来判断connection的in field是否可读。 <br />
+后续的一系列if语句的作用，我在代码的注释里，已经写的很清楚了。</p>
+
+<p><strong>20.Connection.connect()</strong></p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">public</span> <span class="kt">void</span> <span class="nf">connect</span><span class="o">(</span><span class="kt">int</span> <span class="n">connectTimeout</span><span class="o">,</span> <span class="kt">int</span> <span class="n">readTimeout</span><span class="o">,</span> <span class="nc">TunnelRequest</span> <span class="n">tunnelRequest</span><span class="o">)</span>
+     <span class="kd">throws</span> <span class="nc">IOException</span> <span class="o">{</span>
+   <span class="k">if</span> <span class="o">(</span><span class="n">connected</span><span class="o">)</span> <span class="o">{</span>
+     <span class="k">throw</span> <span class="k">new</span> <span class="nf">IllegalStateException</span><span class="o">(</span><span class="s">"already connected"</span><span class="o">);</span>
+   <span class="o">}</span>
+   <span class="n">connected</span> <span class="o">=</span> <span class="kc">true</span><span class="o">;</span>
+   <span class="n">socket</span> <span class="o">=</span> <span class="o">(</span><span class="n">route</span><span class="o">.</span><span class="na">proxy</span><span class="o">.</span><span class="na">type</span><span class="o">()</span> <span class="o">!=</span> <span class="nc">Proxy</span><span class="o">.</span><span class="na">Type</span><span class="o">.</span><span class="na">HTTP</span><span class="o">)</span> <span class="o">?</span> <span class="k">new</span> <span class="nc">Socket</span><span class="o">(</span><span class="n">route</span><span class="o">.</span><span class="na">proxy</span><span class="o">)</span> <span class="o">:</span> <span class="k">new</span> <span class="nc">Socket</span><span class="o">();</span>
+   <span class="nc">Platform</span><span class="o">.</span><span class="na">get</span><span class="o">().</span><span class="na">connectSocket</span><span class="o">(</span><span class="n">socket</span><span class="o">,</span> <span class="n">route</span><span class="o">.</span><span class="na">inetSocketAddress</span><span class="o">,</span> <span class="n">connectTimeout</span><span class="o">);</span>
+   <span class="n">socket</span><span class="o">.</span><span class="na">setSoTimeout</span><span class="o">(</span><span class="n">readTimeout</span><span class="o">);</span>
+   <span class="n">in</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="na">getInputStream</span><span class="o">();</span>
+   <span class="n">out</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="na">getOutputStream</span><span class="o">();</span>
+
+   <span class="k">if</span> <span class="o">(</span><span class="n">route</span><span class="o">.</span><span class="na">address</span><span class="o">.</span><span class="na">sslSocketFactory</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+     <span class="n">upgradeToTls</span><span class="o">(</span><span class="n">tunnelRequest</span><span class="o">);</span>
+   <span class="o">}</span>
+
+   <span class="c1">// Use MTU-sized buffers to send fewer packets.</span>
+   <span class="kt">int</span> <span class="n">mtu</span> <span class="o">=</span> <span class="nc">Platform</span><span class="o">.</span><span class="na">get</span><span class="o">().</span><span class="na">getMtu</span><span class="o">(</span><span class="n">socket</span><span class="o">);</span>
+   <span class="k">if</span> <span class="o">(</span><span class="n">mtu</span> <span class="o">&lt;</span> <span class="mi">1024</span><span class="o">)</span> <span class="n">mtu</span> <span class="o">=</span> <span class="mi">1024</span><span class="o">;</span>
+   <span class="k">if</span> <span class="o">(</span><span class="n">mtu</span> <span class="o">&gt;</span> <span class="mi">8192</span><span class="o">)</span> <span class="n">mtu</span> <span class="o">=</span> <span class="mi">8192</span><span class="o">;</span>
+   <span class="n">in</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">BufferedInputStream</span><span class="o">(</span><span class="n">in</span><span class="o">,</span> <span class="n">mtu</span><span class="o">);</span>
+   <span class="n">out</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">BufferedOutputStream</span><span class="o">(</span><span class="n">out</span><span class="o">,</span> <span class="n">mtu</span><span class="o">);</span>
+ <span class="o">}</span></code></pre></figure>
+
+<p>就是简单的网络编程知识了，从socket里获取inputStream和outputStream。</p>
+
+<p><strong>17.HttpEngine.connect()</strong></p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">protected</span> <span class="kd">final</span> <span class="kt">void</span> <span class="nf">connect</span><span class="o">()</span> <span class="kd">throws</span> <span class="nc">IOException</span> <span class="o">{</span>
+   <span class="k">if</span> <span class="o">(</span><span class="n">connection</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+     <span class="k">return</span><span class="o">;</span>
+   <span class="o">}</span>
+   <span class="k">if</span> <span class="o">(</span><span class="n">routeSelector</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+     <span class="nc">String</span> <span class="n">uriHost</span> <span class="o">=</span> <span class="n">uri</span><span class="o">.</span><span class="na">getHost</span><span class="o">();</span>
+     <span class="k">if</span> <span class="o">(</span><span class="n">uriHost</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+       <span class="k">throw</span> <span class="k">new</span> <span class="nf">UnknownHostException</span><span class="o">(</span><span class="n">uri</span><span class="o">.</span><span class="na">toString</span><span class="o">());</span>
+     <span class="o">}</span>
+     <span class="nc">SSLSocketFactory</span> <span class="n">sslSocketFactory</span> <span class="o">=</span> <span class="kc">null</span><span class="o">;</span>
+     <span class="nc">HostnameVerifier</span> <span class="n">hostnameVerifier</span> <span class="o">=</span> <span class="kc">null</span><span class="o">;</span>
+     <span class="k">if</span> <span class="o">(</span><span class="n">uri</span><span class="o">.</span><span class="na">getScheme</span><span class="o">().</span><span class="na">equalsIgnoreCase</span><span class="o">(</span><span class="s">"https"</span><span class="o">))</span> <span class="o">{</span>
+       <span class="n">sslSocketFactory</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="na">getSslSocketFactory</span><span class="o">();</span>
+       <span class="n">hostnameVerifier</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="na">getHostnameVerifier</span><span class="o">();</span>
+     <span class="o">}</span>
+     <span class="nc">Address</span> <span class="n">address</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">Address</span><span class="o">(</span><span class="n">uriHost</span><span class="o">,</span> <span class="n">getEffectivePort</span><span class="o">(</span><span class="n">uri</span><span class="o">),</span> <span class="n">sslSocketFactory</span><span class="o">,</span>
+         <span class="n">hostnameVerifier</span><span class="o">,</span> <span class="n">client</span><span class="o">.</span><span class="na">getAuthenticator</span><span class="o">(),</span> <span class="n">client</span><span class="o">.</span><span class="na">getProxy</span><span class="o">(),</span> <span class="n">client</span><span class="o">.</span><span class="na">getTransports</span><span class="o">());</span>
+     <span class="n">routeSelector</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">RouteSelector</span><span class="o">(</span><span class="n">address</span><span class="o">,</span> <span class="n">uri</span><span class="o">,</span> <span class="n">client</span><span class="o">.</span><span class="na">getProxySelector</span><span class="o">(),</span>
+         <span class="n">client</span><span class="o">.</span><span class="na">getConnectionPool</span><span class="o">(),</span> <span class="nc">Dns</span><span class="o">.</span><span class="na">DEFAULT</span><span class="o">,</span> <span class="n">client</span><span class="o">.</span><span class="na">getRoutesDatabase</span><span class="o">());</span>
+   <span class="o">}</span>
+   <span class="n">connection</span> <span class="o">=</span> <span class="n">routeSelector</span><span class="o">.</span><span class="na">next</span><span class="o">(</span><span class="n">method</span><span class="o">);</span>
+   <span class="k">if</span> <span class="o">(!</span><span class="n">connection</span><span class="o">.</span><span class="na">isConnected</span><span class="o">())</span> <span class="o">{</span>
+     <span class="n">connection</span><span class="o">.</span><span class="na">connect</span><span class="o">(</span><span class="n">client</span><span class="o">.</span><span class="na">getConnectTimeout</span><span class="o">(),</span> <span class="n">client</span><span class="o">.</span><span class="na">getReadTimeout</span><span class="o">(),</span> <span class="n">getTunnelConfig</span><span class="o">());</span>
+     <span class="n">client</span><span class="o">.</span><span class="na">getConnectionPool</span><span class="o">().</span><span class="na">maybeShare</span><span class="o">(</span><span class="n">connection</span><span class="o">);</span> <span class="c1">// connectionPool添加这个连接</span>
+     <span class="n">client</span><span class="o">.</span><span class="na">getRoutesDatabase</span><span class="o">().</span><span class="na">connected</span><span class="o">(</span><span class="n">connection</span><span class="o">.</span><span class="na">getRoute</span><span class="o">());</span> <span class="c1">// failedRoutes.remove(route);</span>
+   <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+     <span class="n">connection</span><span class="o">.</span><span class="na">updateReadTimeout</span><span class="o">(</span><span class="n">client</span><span class="o">.</span><span class="na">getReadTimeout</span><span class="o">());</span>
+   <span class="o">}</span>
+   <span class="n">connected</span><span class="o">(</span><span class="n">connection</span><span class="o">);</span>
+   <span class="k">if</span> <span class="o">(</span><span class="n">connection</span><span class="o">.</span><span class="na">getRoute</span><span class="o">().</span><span class="na">getProxy</span><span class="o">()</span> <span class="o">!=</span> <span class="n">client</span><span class="o">.</span><span class="na">getProxy</span><span class="o">())</span> <span class="o">{</span>
+     <span class="c1">// Update the request line if the proxy changed; it may need a host name.</span>
+     <span class="n">requestHeaders</span><span class="o">.</span><span class="na">getHeaders</span><span class="o">().</span><span class="na">setRequestLine</span><span class="o">(</span><span class="n">getRequestLine</span><span class="o">());</span>
+   <span class="o">}</span>
+ <span class="o">}</span></code></pre></figure>
+
+<p>自己添加的中文注释和google工程师的英文注释已经很清楚了。我们重点关注下client.getRoutesDatabase().connected(connection.getRoute()) <br />
+其实RouteDatabase这个类的作用很简单，它的作用源码里的介绍已经很清楚了，如下:</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="cm">/**
+ * A blacklist of failed routes to avoid when creating a new connection to a
+ * target address. This is used so that OkHttp can learn from its mistakes: if
+ * there was a failure attempting to connect to a specific IP address, proxy
+ * server or TLS mode, that failure is remembered and alternate routes are
+ * preferred.
+ */</span>
+<span class="kd">public</span> <span class="kd">final</span> <span class="kd">class</span> <span class="nc">RouteDatabase</span> <span class="o">{</span>
+  <span class="kd">private</span> <span class="kd">final</span> <span class="nc">Set</span><span class="o">&lt;</span><span class="nc">Route</span><span class="o">&gt;</span> <span class="n">failedRoutes</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">LinkedHashSet</span><span class="o">&lt;</span><span class="nc">Route</span><span class="o">&gt;();</span>
+
+  <span class="cm">/** Records a failure connecting to {@code failedRoute}. */</span>
+  <span class="kd">public</span> <span class="kd">synchronized</span> <span class="kt">void</span> <span class="nf">failed</span><span class="o">(</span><span class="nc">Route</span> <span class="n">failedRoute</span><span class="o">,</span> <span class="nc">IOException</span> <span class="n">failure</span><span class="o">)</span> <span class="o">{</span>
+    <span class="n">failedRoutes</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">failedRoute</span><span class="o">);</span>
+
+    <span class="k">if</span> <span class="o">(!(</span><span class="n">failure</span> <span class="k">instanceof</span> <span class="nc">SSLHandshakeException</span><span class="o">))</span> <span class="o">{</span>
+      <span class="c1">// If the problem was not related to SSL then it will also fail with</span>
+      <span class="c1">// a different TLS mode therefore we can be proactive about it.</span>
+      <span class="n">failedRoutes</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">failedRoute</span><span class="o">.</span><span class="na">flipTlsMode</span><span class="o">());</span>
+    <span class="o">}</span>
+  <span class="o">}</span>
+
+  <span class="cm">/** Records success connecting to {@code failedRoute}. */</span>
+  <span class="kd">public</span> <span class="kd">synchronized</span> <span class="kt">void</span> <span class="nf">connected</span><span class="o">(</span><span class="nc">Route</span> <span class="n">route</span><span class="o">)</span> <span class="o">{</span>
+    <span class="n">failedRoutes</span><span class="o">.</span><span class="na">remove</span><span class="o">(</span><span class="n">route</span><span class="o">);</span>
+  <span class="o">}</span>
+
+  <span class="cm">/** Returns true if {@code route} has failed recently and should be avoided. */</span>
+  <span class="kd">public</span> <span class="kd">synchronized</span> <span class="kt">boolean</span> <span class="nf">shouldPostpone</span><span class="o">(</span><span class="nc">Route</span> <span class="n">route</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">return</span> <span class="n">failedRoutes</span><span class="o">.</span><span class="na">contains</span><span class="o">(</span><span class="n">route</span><span class="o">);</span>
+  <span class="o">}</span>
+
+  <span class="kd">public</span> <span class="kd">synchronized</span> <span class="kt">int</span> <span class="nf">failedRoutesCount</span><span class="o">()</span> <span class="o">{</span>
+    <span class="k">return</span> <span class="n">failedRoutes</span><span class="o">.</span><span class="na">size</span><span class="o">();</span>
+  <span class="o">}</span>
+<span class="o">}</span></code></pre></figure>
+
+<p><strong>ConnectionPool介绍</strong>  <br />
+中间穿插介绍下okhttp的连接缓存池的代码，就看看它的核心recycle方法</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">public</span> <span class="kt">void</span> <span class="nf">recycle</span><span class="o">(</span><span class="nc">Connection</span> <span class="n">connection</span><span class="o">)</span> <span class="o">{</span>
+   <span class="k">if</span> <span class="o">(</span><span class="n">connection</span><span class="o">.</span><span class="na">isSpdy</span><span class="o">())</span> <span class="o">{</span> <span class="c1">// spdy是http1.2的前身，主要实现了一个socket连接对于多个请求的多路复用</span>
+     <span class="k">return</span><span class="o">;</span>
+   <span class="o">}</span>
+
+   <span class="k">if</span> <span class="o">(!</span><span class="n">connection</span><span class="o">.</span><span class="na">isAlive</span><span class="o">())</span> <span class="o">{</span>
+     <span class="nc">Util</span><span class="o">.</span><span class="na">closeQuietly</span><span class="o">(</span><span class="n">connection</span><span class="o">);</span>
+     <span class="k">return</span><span class="o">;</span>
+   <span class="o">}</span>
+
+   <span class="k">try</span> <span class="o">{</span>
+     <span class="nc">Platform</span><span class="o">.</span><span class="na">get</span><span class="o">().</span><span class="na">untagSocket</span><span class="o">(</span><span class="n">connection</span><span class="o">.</span><span class="na">getSocket</span><span class="o">());</span> <span class="c1">// 停止对该socket的统计工作</span>
+   <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">SocketException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+     <span class="c1">// When unable to remove tagging, skip recycling and close.</span>
+     <span class="nc">Platform</span><span class="o">.</span><span class="na">get</span><span class="o">().</span><span class="na">logW</span><span class="o">(</span><span class="s">"Unable to untagSocket(): "</span> <span class="o">+</span> <span class="n">e</span><span class="o">);</span>
+     <span class="nc">Util</span><span class="o">.</span><span class="na">closeQuietly</span><span class="o">(</span><span class="n">connection</span><span class="o">);</span>
+     <span class="k">return</span><span class="o">;</span>
+   <span class="o">}</span>
+
+   <span class="kd">synchronized</span> <span class="o">(</span><span class="k">this</span><span class="o">)</span> <span class="o">{</span>
+     <span class="n">connections</span><span class="o">.</span><span class="na">addFirst</span><span class="o">(</span><span class="n">connection</span><span class="o">);</span> <span class="c1">// connections中添加connection</span>
+     <span class="n">connection</span><span class="o">.</span><span class="na">resetIdleStartTime</span><span class="o">();</span> <span class="c1">// 重置闲置时间为当前</span>
+   <span class="o">}</span>
+
+   <span class="n">executorService</span><span class="o">.</span><span class="na">submit</span><span class="o">(</span><span class="n">connectionsCleanupCallable</span><span class="o">);</span> <span class="c1">// 开启清理任务,清理失效的连接</span>
+ <span class="o">}</span>
+
+ <span class="cm">/** We use a single background thread to cleanup expired connections. */</span>
+  <span class="kd">private</span> <span class="kd">final</span> <span class="nc">ExecutorService</span> <span class="n">executorService</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">ThreadPoolExecutor</span><span class="o">(</span><span class="mi">0</span><span class="o">,</span> <span class="mi">1</span><span class="o">,</span>
+      <span class="mi">60L</span><span class="o">,</span> <span class="nc">TimeUnit</span><span class="o">.</span><span class="na">SECONDS</span><span class="o">,</span> <span class="k">new</span> <span class="nc">LinkedBlockingQueue</span><span class="o">&lt;</span><span class="nc">Runnable</span><span class="o">&gt;(),</span>
+      <span class="nc">Util</span><span class="o">.</span><span class="na">daemonThreadFactory</span><span class="o">(</span><span class="s">"OkHttp ConnectionPool"</span><span class="o">));</span>
+  <span class="kd">private</span> <span class="kd">final</span> <span class="nc">Callable</span><span class="o">&lt;</span><span class="nc">Void</span><span class="o">&gt;</span> <span class="n">connectionsCleanupCallable</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">Callable</span><span class="o">&lt;</span><span class="nc">Void</span><span class="o">&gt;()</span> <span class="o">{</span>
+    <span class="nd">@Override</span> <span class="kd">public</span> <span class="nc">Void</span> <span class="nf">call</span><span class="o">()</span> <span class="kd">throws</span> <span class="nc">Exception</span> <span class="o">{</span>
+      <span class="nc">List</span><span class="o">&lt;</span><span class="nc">Connection</span><span class="o">&gt;</span> <span class="n">expiredConnections</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">ArrayList</span><span class="o">&lt;</span><span class="nc">Connection</span><span class="o">&gt;(</span><span class="no">MAX_CONNECTIONS_TO_CLEANUP</span><span class="o">);</span>
+      <span class="kt">int</span> <span class="n">idleConnectionCount</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+      <span class="kd">synchronized</span> <span class="o">(</span><span class="nc">ConnectionPool</span><span class="o">.</span><span class="na">this</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">for</span> <span class="o">(</span><span class="nc">ListIterator</span><span class="o">&lt;</span><span class="nc">Connection</span><span class="o">&gt;</span> <span class="n">i</span> <span class="o">=</span> <span class="n">connections</span><span class="o">.</span><span class="na">listIterator</span><span class="o">(</span><span class="n">connections</span><span class="o">.</span><span class="na">size</span><span class="o">());</span>
+            <span class="n">i</span><span class="o">.</span><span class="na">hasPrevious</span><span class="o">();</span> <span class="o">)</span> <span class="o">{</span>
+          <span class="nc">Connection</span> <span class="n">connection</span> <span class="o">=</span> <span class="n">i</span><span class="o">.</span><span class="na">previous</span><span class="o">();</span>
+          <span class="k">if</span> <span class="o">(!</span><span class="n">connection</span><span class="o">.</span><span class="na">isAlive</span><span class="o">()</span> <span class="o">||</span> <span class="n">connection</span><span class="o">.</span><span class="na">isExpired</span><span class="o">(</span><span class="n">keepAliveDurationNs</span><span class="o">))</span> <span class="o">{</span> <span class="c1">// connection空闲时间超过5min，则认为连接失效</span>
+            <span class="n">i</span><span class="o">.</span><span class="na">remove</span><span class="o">();</span>
+            <span class="n">expiredConnections</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">connection</span><span class="o">);</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">expiredConnections</span><span class="o">.</span><span class="na">size</span><span class="o">()</span> <span class="o">==</span> <span class="no">MAX_CONNECTIONS_TO_CLEANUP</span><span class="o">)</span> <span class="k">break</span><span class="o">;</span>
+          <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">connection</span><span class="o">.</span><span class="na">isIdle</span><span class="o">())</span> <span class="o">{</span>
+            <span class="n">idleConnectionCount</span><span class="o">++;</span>
+          <span class="o">}</span>
+        <span class="o">}</span>
+
+        <span class="k">for</span> <span class="o">(</span><span class="nc">ListIterator</span><span class="o">&lt;</span><span class="nc">Connection</span><span class="o">&gt;</span> <span class="n">i</span> <span class="o">=</span> <span class="n">connections</span><span class="o">.</span><span class="na">listIterator</span><span class="o">(</span><span class="n">connections</span><span class="o">.</span><span class="na">size</span><span class="o">());</span>
+            <span class="n">i</span><span class="o">.</span><span class="na">hasPrevious</span><span class="o">()</span> <span class="o">&amp;&amp;</span> <span class="n">idleConnectionCount</span> <span class="o">&gt;</span> <span class="n">maxIdleConnections</span><span class="o">;</span> <span class="o">)</span> <span class="o">{</span>
+          <span class="nc">Connection</span> <span class="n">connection</span> <span class="o">=</span> <span class="n">i</span><span class="o">.</span><span class="na">previous</span><span class="o">();</span>
+          <span class="k">if</span> <span class="o">(</span><span class="n">connection</span><span class="o">.</span><span class="na">isIdle</span><span class="o">())</span> <span class="o">{</span>
+            <span class="n">expiredConnections</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">connection</span><span class="o">);</span>
+            <span class="n">i</span><span class="o">.</span><span class="na">remove</span><span class="o">();</span>
+            <span class="o">--</span><span class="n">idleConnectionCount</span><span class="o">;</span>
+          <span class="o">}</span>
+        <span class="o">}</span>
+      <span class="o">}</span>
+      <span class="k">for</span> <span class="o">(</span><span class="nc">Connection</span> <span class="n">expiredConnection</span> <span class="o">:</span> <span class="n">expiredConnections</span><span class="o">)</span> <span class="o">{</span>
+        <span class="nc">Util</span><span class="o">.</span><span class="na">closeQuietly</span><span class="o">(</span><span class="n">expiredConnection</span><span class="o">);</span>
+      <span class="o">}</span>
+      <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+    <span class="o">}</span>
+  <span class="o">}</span></code></pre></figure>
+
+<p><strong>21.createRequestbody</strong> <br />
+这段代码就是给包装了下20步中connection返回的outputStream,并且把请求头部写入了。</p>
+
+<p><strong>22.OutputStream os = conn.getOutputStream()</strong>  <br />
+这一步就是给21步中封装的socket outputStreanm填充数据了。具体怎么填充，可以参考文章开头的例子。</p>
+
+<p><strong>30.HttpTransport.getTransferStream()</strong></p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="nd">@Override</span> <span class="kd">public</span> <span class="nc">InputStream</span> <span class="nf">getTransferStream</span><span class="o">(</span><span class="nc">CacheRequest</span> <span class="n">cacheRequest</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">IOException</span> <span class="o">{</span>
+    <span class="k">if</span> <span class="o">(!</span><span class="n">httpEngine</span><span class="o">.</span><span class="na">hasResponseBody</span><span class="o">())</span> <span class="o">{</span>
+      <span class="k">return</span> <span class="k">new</span> <span class="nf">FixedLengthInputStream</span><span class="o">(</span><span class="n">socketIn</span><span class="o">,</span> <span class="n">cacheRequest</span><span class="o">,</span> <span class="n">httpEngine</span><span class="o">,</span> <span class="mi">0</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="k">if</span> <span class="o">(</span><span class="n">httpEngine</span><span class="o">.</span><span class="na">responseHeaders</span><span class="o">.</span><span class="na">isChunked</span><span class="o">())</span> <span class="o">{</span>
+      <span class="k">return</span> <span class="k">new</span> <span class="nf">ChunkedInputStream</span><span class="o">(</span><span class="n">socketIn</span><span class="o">,</span> <span class="n">cacheRequest</span><span class="o">,</span> <span class="k">this</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="k">if</span> <span class="o">(</span><span class="n">httpEngine</span><span class="o">.</span><span class="na">responseHeaders</span><span class="o">.</span><span class="na">getContentLength</span><span class="o">()</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span><span class="o">)</span> <span class="o">{</span>
+      <span class="k">return</span> <span class="k">new</span> <span class="nf">FixedLengthInputStream</span><span class="o">(</span><span class="n">socketIn</span><span class="o">,</span> <span class="n">cacheRequest</span><span class="o">,</span> <span class="n">httpEngine</span><span class="o">,</span>
+          <span class="n">httpEngine</span><span class="o">.</span><span class="na">responseHeaders</span><span class="o">.</span><span class="na">getContentLength</span><span class="o">());</span>
+    <span class="o">}</span>
+
+    <span class="c1">// Wrap the input stream from the connection (rather than just returning</span>
+    <span class="c1">// "socketIn" directly here), so that we can control its use after the</span>
+    <span class="c1">// reference escapes.</span>
+    <span class="k">return</span> <span class="k">new</span> <span class="nf">UnknownLengthHttpInputStream</span><span class="o">(</span><span class="n">socketIn</span><span class="o">,</span> <span class="n">cacheRequest</span><span class="o">,</span> <span class="n">httpEngine</span><span class="o">);</span>
+  <span class="o">}</span></code></pre></figure>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">final</span> <span class="kd">class</span> <span class="nc">UnknownLengthHttpInputStream</span> <span class="kd">extends</span> <span class="nc">AbstractHttpInputStream</span> <span class="o">{</span>
+  <span class="kd">private</span> <span class="kt">boolean</span> <span class="n">inputExhausted</span><span class="o">;</span>
+
+  <span class="nc">UnknownLengthHttpInputStream</span><span class="o">(</span><span class="nc">InputStream</span> <span class="n">is</span><span class="o">,</span> <span class="nc">CacheRequest</span> <span class="n">cacheRequest</span><span class="o">,</span> <span class="nc">HttpEngine</span> <span class="n">httpEngine</span><span class="o">)</span>
+      <span class="kd">throws</span> <span class="nc">IOException</span> <span class="o">{</span>
+    <span class="kd">super</span><span class="o">(</span><span class="n">is</span><span class="o">,</span> <span class="n">httpEngine</span><span class="o">,</span> <span class="n">cacheRequest</span><span class="o">);</span>
+  <span class="o">}</span>
+
+  <span class="nd">@Override</span> <span class="kd">public</span> <span class="kt">int</span> <span class="nf">read</span><span class="o">(</span><span class="kt">byte</span><span class="o">[]</span> <span class="n">buffer</span><span class="o">,</span> <span class="kt">int</span> <span class="n">offset</span><span class="o">,</span> <span class="kt">int</span> <span class="n">count</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">IOException</span> <span class="o">{</span>
+    <span class="n">checkOffsetAndCount</span><span class="o">(</span><span class="n">buffer</span><span class="o">.</span><span class="na">length</span><span class="o">,</span> <span class="n">offset</span><span class="o">,</span> <span class="n">count</span><span class="o">);</span>
+    <span class="n">checkNotClosed</span><span class="o">();</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">in</span> <span class="o">==</span> <span class="kc">null</span> <span class="o">||</span> <span class="n">inputExhausted</span><span class="o">)</span> <span class="o">{</span>
+      <span class="k">return</span> <span class="o">-</span><span class="mi">1</span><span class="o">;</span>
+    <span class="o">}</span>
+    <span class="kt">int</span> <span class="n">read</span> <span class="o">=</span> <span class="n">in</span><span class="o">.</span><span class="na">read</span><span class="o">(</span><span class="n">buffer</span><span class="o">,</span> <span class="n">offset</span><span class="o">,</span> <span class="n">count</span><span class="o">);</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">read</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="o">)</span> <span class="o">{</span>
+      <span class="n">inputExhausted</span> <span class="o">=</span> <span class="kc">true</span><span class="o">;</span>
+      <span class="n">endOfInput</span><span class="o">(</span><span class="kc">false</span><span class="o">);</span>
+      <span class="k">return</span> <span class="o">-</span><span class="mi">1</span><span class="o">;</span>
+    <span class="o">}</span>
+    <span class="n">cacheWrite</span><span class="o">(</span><span class="n">buffer</span><span class="o">,</span> <span class="n">offset</span><span class="o">,</span> <span class="n">read</span><span class="o">);</span>
+    <span class="k">return</span> <span class="n">read</span><span class="o">;</span>
+  <span class="o">}</span></code></pre></figure>
+
+<p><strong>可以看到在返回inputStream时，使用了装饰者模式。实际上读取数据只需要socketIn这个inputstream,UnknownLengthHttpInputStream这个包装类的</strong>
+<strong>read方法会调用cacheWrite。即用户在读取response的同时，我们将response的body缓存到了本地文件中。此刻我们就完成了网络请求的本地缓存功能。</strong></p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="nc">AbstractHttpInputStream</span><span class="o">(</span><span class="nc">InputStream</span> <span class="n">in</span><span class="o">,</span> <span class="nc">HttpEngine</span> <span class="n">httpEngine</span><span class="o">,</span> <span class="nc">CacheRequest</span> <span class="n">cacheRequest</span><span class="o">)</span>
+      <span class="kd">throws</span> <span class="nc">IOException</span> <span class="o">{</span>
+    <span class="k">this</span><span class="o">.</span><span class="na">in</span> <span class="o">=</span> <span class="n">in</span><span class="o">;</span>
+    <span class="k">this</span><span class="o">.</span><span class="na">httpEngine</span> <span class="o">=</span> <span class="n">httpEngine</span><span class="o">;</span>
+
+    <span class="nc">OutputStream</span> <span class="n">cacheBody</span> <span class="o">=</span> <span class="n">cacheRequest</span> <span class="o">!=</span> <span class="kc">null</span> <span class="o">?</span> <span class="n">cacheRequest</span><span class="o">.</span><span class="na">getBody</span><span class="o">()</span> <span class="o">:</span> <span class="kc">null</span><span class="o">;</span>
+
+    <span class="c1">// some apps return a null body; for compatibility we treat that like a null cache request</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">cacheBody</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+      <span class="n">cacheRequest</span> <span class="o">=</span> <span class="kc">null</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="k">this</span><span class="o">.</span><span class="na">cacheBody</span> <span class="o">=</span> <span class="n">cacheBody</span><span class="o">;</span>
+    <span class="k">this</span><span class="o">.</span><span class="na">cacheRequest</span> <span class="o">=</span> <span class="n">cacheRequest</span><span class="o">;</span>
+  <span class="o">}</span>
+
+  <span class="kd">protected</span> <span class="kd">final</span> <span class="kt">void</span> <span class="nf">cacheWrite</span><span class="o">(</span><span class="kt">byte</span><span class="o">[]</span> <span class="n">buffer</span><span class="o">,</span> <span class="kt">int</span> <span class="n">offset</span><span class="o">,</span> <span class="kt">int</span> <span class="n">count</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">IOException</span> <span class="o">{</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">cacheBody</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+      <span class="n">cacheBody</span><span class="o">.</span><span class="na">write</span><span class="o">(</span><span class="n">buffer</span><span class="o">,</span> <span class="n">offset</span><span class="o">,</span> <span class="n">count</span><span class="o">);</span>
+    <span class="o">}</span>
+  <span class="o">}</span></code></pre></figure>
+
+<p>这里的cacheRequest就是第28步返回的CacheRequestImpl实例。
+而第29步的initContentStream就是给responseBodyIn赋值，也就是上述的包装类UnknownLengthHttpInputStream。
+<strong>用户调用conn.getInputStream调用的就是HttpEngine.getResponseBody,即返回responseBodyIn。</strong></p>
+
+<p><strong>最后关于如何判断缓存有效这个问题，是用url+响应vary头部作为hash key来查找本地的缓存，至于是否有效是靠响应头部的last-modified这个字段。</strong>
+源码如下：</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">public</span> <span class="kt">boolean</span> <span class="nf">validate</span><span class="o">(</span><span class="nc">ResponseHeaders</span> <span class="n">networkResponse</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">networkResponse</span><span class="o">.</span><span class="na">headers</span><span class="o">.</span><span class="na">getResponseCode</span><span class="o">()</span> <span class="o">==</span> <span class="nc">HttpURLConnection</span><span class="o">.</span><span class="na">HTTP_NOT_MODIFIED</span><span class="o">)</span> <span class="o">{</span>
+      <span class="k">return</span> <span class="kc">true</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="c1">// The HTTP spec says that if the network's response is older than our</span>
+    <span class="c1">// cached response, we may return the cache's response. Like Chrome (but</span>
+    <span class="c1">// unlike Firefox), this client prefers to return the newer response.</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">lastModified</span> <span class="o">!=</span> <span class="kc">null</span>
+        <span class="o">&amp;&amp;</span> <span class="n">networkResponse</span><span class="o">.</span><span class="na">lastModified</span> <span class="o">!=</span> <span class="kc">null</span>
+        <span class="o">&amp;&amp;</span> <span class="n">networkResponse</span><span class="o">.</span><span class="na">lastModified</span><span class="o">.</span><span class="na">getTime</span><span class="o">()</span> <span class="o">&lt;</span> <span class="n">lastModified</span><span class="o">.</span><span class="na">getTime</span><span class="o">())</span> <span class="o">{</span>
+      <span class="k">return</span> <span class="kc">true</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="k">return</span> <span class="kc">false</span><span class="o">;</span>
+  <span class="o">}</span></code></pre></figure>
+
+<p>至此，整个httpUrlConnection和其内部的okhttp就分析完成了~</p>
+:ET

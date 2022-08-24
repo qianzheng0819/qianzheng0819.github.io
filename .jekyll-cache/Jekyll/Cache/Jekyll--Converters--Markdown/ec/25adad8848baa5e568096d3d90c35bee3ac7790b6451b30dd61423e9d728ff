@@ -1,0 +1,2 @@
+I"[<p>1.Publication and Escape.Publishing an object means making it available to code outside of its current scope,such as by storing a reference to it where other code can find it, returning it from a nonprivate method, or passing it to a method in another class.An object that is published when it should not have been is said to have escaped;</p>
+:ET

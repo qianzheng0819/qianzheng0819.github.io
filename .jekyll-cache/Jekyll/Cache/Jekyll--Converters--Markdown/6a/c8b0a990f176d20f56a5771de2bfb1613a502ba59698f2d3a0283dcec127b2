@@ -1,0 +1,478 @@
+I"��<h3 id="前言"><strong>前言</strong></h3>
+<p>scrollview的核心是Scroller类，还有View的draw()方法里调用的computeScroll()方法。一般在自定义控件里使用Scroller类时，都要配合重写
+View的computeScroll()方法。下面我们分析一下ScrollView这个官方自定义控件实现的具体代码。本文源码使用android2.3.7版本，低版本的代码结构简单，方便分析。</p>
+
+<h3 id="onintercepttouchevent"><strong>onInterceptTouchEvent</strong></h3>
+<p>ScrollView作为一个viewGroup自然是要重写这个方法来决定自己是否拦截触摸事件啦。先上源码，容易理解的代码就直接在注释里分析啦。</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="nd">@Override</span>
+    <span class="kd">public</span> <span class="kt">boolean</span> <span class="nf">onInterceptTouchEvent</span><span class="o">(</span><span class="nc">MotionEvent</span> <span class="n">ev</span><span class="o">)</span> <span class="o">{</span>
+        <span class="cm">/*
+         * This method JUST determines whether we want to intercept the motion.
+         * If we return true, onMotionEvent will be called and we do the actual
+         * scrolling there.
+         */</span>
+
+        <span class="cm">/*
+        * Shortcut the most recurring case: the user is in the dragging
+        * state and he is moving his finger.  We want to intercept this
+        * motion.
+        */</span>
+        <span class="kd">final</span> <span class="kt">int</span> <span class="n">action</span> <span class="o">=</span> <span class="n">ev</span><span class="o">.</span><span class="na">getAction</span><span class="o">();</span>
+        <span class="k">if</span> <span class="o">((</span><span class="n">action</span> <span class="o">==</span> <span class="nc">MotionEvent</span><span class="o">.</span><span class="na">ACTION_MOVE</span><span class="o">)</span> <span class="o">&amp;&amp;</span> <span class="o">(</span><span class="n">mIsBeingDragged</span><span class="o">))</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="kc">true</span><span class="o">;</span>
+        <span class="o">}</span>
+
+        <span class="k">switch</span> <span class="o">(</span><span class="n">action</span> <span class="o">&amp;</span> <span class="nc">MotionEvent</span><span class="o">.</span><span class="na">ACTION_MASK</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">case</span> <span class="nc">MotionEvent</span><span class="o">.</span><span class="na">ACTION_MOVE</span><span class="o">:</span> <span class="o">{</span>
+                <span class="cm">/*
+                 * mIsBeingDragged == false, otherwise the shortcut would have caught it. Check
+                 * whether the user has moved far enough from his original down touch.
+                 */</span>
+
+                <span class="cm">/*
+                * Locally do absolute value. mLastMotionY is set to the y value
+                * of the down event.
+                */</span>
+                <span class="kd">final</span> <span class="kt">int</span> <span class="n">activePointerId</span> <span class="o">=</span> <span class="n">mActivePointerId</span><span class="o">;</span>
+                <span class="k">if</span> <span class="o">(</span><span class="n">activePointerId</span> <span class="o">==</span> <span class="no">INVALID_POINTER</span><span class="o">)</span> <span class="o">{</span>
+                    <span class="c1">// If we don't have a valid id, the touch down wasn't on content.</span>
+                    <span class="k">break</span><span class="o">;</span>
+                <span class="o">}</span>
+
+                <span class="kd">final</span> <span class="kt">int</span> <span class="n">pointerIndex</span> <span class="o">=</span> <span class="n">ev</span><span class="o">.</span><span class="na">findPointerIndex</span><span class="o">(</span><span class="n">activePointerId</span><span class="o">);</span>
+                <span class="kd">final</span> <span class="kt">float</span> <span class="n">y</span> <span class="o">=</span> <span class="n">ev</span><span class="o">.</span><span class="na">getY</span><span class="o">(</span><span class="n">pointerIndex</span><span class="o">);</span>
+                <span class="kd">final</span> <span class="kt">int</span> <span class="n">yDiff</span> <span class="o">=</span> <span class="o">(</span><span class="kt">int</span><span class="o">)</span> <span class="nc">Math</span><span class="o">.</span><span class="na">abs</span><span class="o">(</span><span class="n">y</span> <span class="o">-</span> <span class="n">mLastMotionY</span><span class="o">);</span>
+                <span class="k">if</span> <span class="o">(</span><span class="n">yDiff</span> <span class="o">&gt;</span> <span class="n">mTouchSlop</span><span class="o">)</span> <span class="o">{</span>
+                    <span class="n">mIsBeingDragged</span> <span class="o">=</span> <span class="kc">true</span><span class="o">;</span>
+                    <span class="n">mLastMotionY</span> <span class="o">=</span> <span class="n">y</span><span class="o">;</span>
+                <span class="o">}</span>
+                <span class="k">break</span><span class="o">;</span>
+            <span class="o">}</span>
+
+            <span class="k">case</span> <span class="nc">MotionEvent</span><span class="o">.</span><span class="na">ACTION_DOWN</span><span class="o">:</span> <span class="o">{</span>
+                <span class="kd">final</span> <span class="kt">float</span> <span class="n">y</span> <span class="o">=</span> <span class="n">ev</span><span class="o">.</span><span class="na">getY</span><span class="o">();</span>
+                <span class="k">if</span> <span class="o">(!</span><span class="n">inChild</span><span class="o">((</span><span class="kt">int</span><span class="o">)</span> <span class="n">ev</span><span class="o">.</span><span class="na">getX</span><span class="o">(),</span> <span class="o">(</span><span class="kt">int</span><span class="o">)</span> <span class="n">y</span><span class="o">))</span> <span class="o">{</span>
+                    <span class="n">mIsBeingDragged</span> <span class="o">=</span> <span class="kc">false</span><span class="o">;</span>
+                    <span class="k">break</span><span class="o">;</span>
+                <span class="o">}</span>
+
+                <span class="cm">/*
+                 * Remember location of down touch.
+                 * ACTION_DOWN always refers to pointer index 0.
+                 */</span>
+                <span class="n">mLastMotionY</span> <span class="o">=</span> <span class="n">y</span><span class="o">;</span>
+                <span class="n">mActivePointerId</span> <span class="o">=</span> <span class="n">ev</span><span class="o">.</span><span class="na">getPointerId</span><span class="o">(</span><span class="mi">0</span><span class="o">);</span>
+
+                <span class="cm">/*
+                * If being flinged and user touches the screen, initiate drag;
+                * otherwise don't.  mScroller.isFinished should be false when
+                * being flinged.
+                */</span>
+                <span class="n">mIsBeingDragged</span> <span class="o">=</span> <span class="o">!</span><span class="n">mScroller</span><span class="o">.</span><span class="na">isFinished</span><span class="o">();</span>
+                <span class="k">break</span><span class="o">;</span>
+            <span class="o">}</span>
+
+            <span class="k">case</span> <span class="nc">MotionEvent</span><span class="o">.</span><span class="na">ACTION_CANCEL</span><span class="o">:</span>
+            <span class="k">case</span> <span class="nc">MotionEvent</span><span class="o">.</span><span class="na">ACTION_UP</span><span class="o">:</span>
+                <span class="cm">/* Release the drag */</span>
+                <span class="n">mIsBeingDragged</span> <span class="o">=</span> <span class="kc">false</span><span class="o">;</span>
+                <span class="n">mActivePointerId</span> <span class="o">=</span> <span class="no">INVALID_POINTER</span><span class="o">;</span>
+                <span class="k">if</span> <span class="o">(</span><span class="n">mScroller</span><span class="o">.</span><span class="na">springBack</span><span class="o">(</span><span class="n">mScrollX</span><span class="o">,</span> <span class="n">mScrollY</span><span class="o">,</span> <span class="mi">0</span><span class="o">,</span> <span class="mi">0</span><span class="o">,</span> <span class="mi">0</span><span class="o">,</span> <span class="n">getScrollRange</span><span class="o">()))</span> <span class="o">{</span>
+                    <span class="n">invalidate</span><span class="o">();</span>
+                <span class="o">}</span>
+                <span class="k">break</span><span class="o">;</span>
+            <span class="k">case</span> <span class="nc">MotionEvent</span><span class="o">.</span><span class="na">ACTION_POINTER_UP</span><span class="o">:</span>
+                <span class="n">onSecondaryPointerUp</span><span class="o">(</span><span class="n">ev</span><span class="o">);</span>
+                <span class="k">break</span><span class="o">;</span>
+        <span class="o">}</span>
+
+        <span class="cm">/*
+        * The only time we want to intercept motion events is if we are in the
+        * drag mode.
+        */</span>
+        <span class="k">return</span> <span class="n">mIsBeingDragged</span><span class="o">;</span>
+    <span class="o">}</span></code></pre></figure>
+
+<p>下面分别对actionDown,actionMove,actionUp这三个事件进行分析。分析就以注释的方式写在代码里吧，也可以结合google源英文注释进行理解。</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="k">if</span> <span class="o">((</span><span class="n">action</span> <span class="o">==</span> <span class="nc">MotionEvent</span><span class="o">.</span><span class="na">ACTION_MOVE</span><span class="o">)</span> <span class="o">&amp;&amp;</span> <span class="o">(</span><span class="n">mIsBeingDragged</span><span class="o">))</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="kc">true</span><span class="o">;</span>
+        <span class="o">}</span>
+<span class="o">....</span>
+
+<span class="k">case</span> <span class="nc">MotionEvent</span><span class="o">.</span><span class="na">ACTION_MOVE</span><span class="o">:</span> <span class="o">{</span>
+  <span class="cm">/*
+   * mIsBeingDragged == false, otherwise the shortcut would have caught it. Check
+   * whether the user has moved far enough from his original down touch.
+   */</span>
+
+  <span class="cm">/*
+  * Locally do absolute value. mLastMotionY is set to the y value
+  * of the down event.
+  */</span>
+  <span class="kd">final</span> <span class="kt">int</span> <span class="n">activePointerId</span> <span class="o">=</span> <span class="n">mActivePointerId</span><span class="o">;</span>
+  <span class="k">if</span> <span class="o">(</span><span class="n">activePointerId</span> <span class="o">==</span> <span class="no">INVALID_POINTER</span><span class="o">)</span> <span class="o">{</span>
+      <span class="c1">// If we don't have a valid id, the touch down wasn't on content.</span>
+      <span class="k">break</span><span class="o">;</span>
+  <span class="o">}</span>
+
+  <span class="kd">final</span> <span class="kt">int</span> <span class="n">pointerIndex</span> <span class="o">=</span> <span class="n">ev</span><span class="o">.</span><span class="na">findPointerIndex</span><span class="o">(</span><span class="n">activePointerId</span><span class="o">);</span>
+  <span class="kd">final</span> <span class="kt">float</span> <span class="n">y</span> <span class="o">=</span> <span class="n">ev</span><span class="o">.</span><span class="na">getY</span><span class="o">(</span><span class="n">pointerIndex</span><span class="o">);</span>
+  <span class="kd">final</span> <span class="kt">int</span> <span class="n">yDiff</span> <span class="o">=</span> <span class="o">(</span><span class="kt">int</span><span class="o">)</span> <span class="nc">Math</span><span class="o">.</span><span class="na">abs</span><span class="o">(</span><span class="n">y</span> <span class="o">-</span> <span class="n">mLastMotionY</span><span class="o">);</span>
+  <span class="k">if</span> <span class="o">(</span><span class="n">yDiff</span> <span class="o">&gt;</span> <span class="n">mTouchSlop</span><span class="o">)</span> <span class="o">{</span>
+      <span class="n">mIsBeingDragged</span> <span class="o">=</span> <span class="kc">true</span><span class="o">;</span>
+      <span class="n">mLastMotionY</span> <span class="o">=</span> <span class="n">y</span><span class="o">;</span>
+  <span class="o">}</span>
+  <span class="k">break</span><span class="o">;</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>如果处于drag模式，我们对于actionMove进行拦截，方便传递给onTouchEvent()来进行滚动。
+如果还未处于drag模式，但是yDiff &gt; mTouchSlop，这个时候可以认为drag模式被触发了。宏观来说就是用户拖动了一段距离。TOUCH_SLOP是在
+ViewConfigration类里定义，是16px。drag模式触发后，我们也要开始拦截actionMove事件。接下来看actionDown事件</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="k">case</span> <span class="nc">MotionEvent</span><span class="o">.</span><span class="na">ACTION_DOWN</span><span class="o">:</span> <span class="o">{</span>
+                <span class="kd">final</span> <span class="kt">float</span> <span class="n">y</span> <span class="o">=</span> <span class="n">ev</span><span class="o">.</span><span class="na">getY</span><span class="o">();</span>
+                <span class="k">if</span> <span class="o">(!</span><span class="n">inChild</span><span class="o">((</span><span class="kt">int</span><span class="o">)</span> <span class="n">ev</span><span class="o">.</span><span class="na">getX</span><span class="o">(),</span> <span class="o">(</span><span class="kt">int</span><span class="o">)</span> <span class="n">y</span><span class="o">))</span> <span class="o">{</span>
+                    <span class="n">mIsBeingDragged</span> <span class="o">=</span> <span class="kc">false</span><span class="o">;</span>
+                    <span class="k">break</span><span class="o">;</span>
+                <span class="o">}</span>
+
+                <span class="cm">/*
+                 * Remember location of down touch.
+                 * ACTION_DOWN always refers to pointer index 0.
+                 */</span>
+                <span class="n">mLastMotionY</span> <span class="o">=</span> <span class="n">y</span><span class="o">;</span>
+                <span class="n">mActivePointerId</span> <span class="o">=</span> <span class="n">ev</span><span class="o">.</span><span class="na">getPointerId</span><span class="o">(</span><span class="mi">0</span><span class="o">);</span>
+
+                <span class="cm">/*
+                * If being flinged and user touches the screen, initiate drag;
+                * otherwise don't.  mScroller.isFinished should be false when
+                * being flinged.
+                */</span>
+                <span class="n">mIsBeingDragged</span> <span class="o">=</span> <span class="o">!</span><span class="n">mScroller</span><span class="o">.</span><span class="na">isFinished</span><span class="o">();</span>
+                <span class="k">break</span><span class="o">;</span>
+            <span class="o">}</span></code></pre></figure>
+
+<p>点击位置不在子控件里面，mIsBeingDragged = false，不拦截该事件。如果当前处于fling模式，那么mIsBeingDragged = !mScroller.isFinished()
+返回为true,即拦截该事件，想必是为fling模式下触摸停止的功能做铺垫，后续的代码里我们会验证这个猜想。接下来看actionUp事件</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="k">case</span> <span class="nc">MotionEvent</span><span class="o">.</span><span class="na">ACTION_UP</span><span class="o">:</span>
+                <span class="cm">/* Release the drag */</span>
+                <span class="n">mIsBeingDragged</span> <span class="o">=</span> <span class="kc">false</span><span class="o">;</span>
+                <span class="n">mActivePointerId</span> <span class="o">=</span> <span class="no">INVALID_POINTER</span><span class="o">;</span>
+                <span class="k">if</span> <span class="o">(</span><span class="n">mScroller</span><span class="o">.</span><span class="na">springBack</span><span class="o">(</span><span class="n">mScrollX</span><span class="o">,</span> <span class="n">mScrollY</span><span class="o">,</span> <span class="mi">0</span><span class="o">,</span> <span class="mi">0</span><span class="o">,</span> <span class="mi">0</span><span class="o">,</span> <span class="n">getScrollRange</span><span class="o">()))</span> <span class="o">{</span>
+                    <span class="n">invalidate</span><span class="o">();</span>
+                <span class="o">}</span>
+                <span class="k">break</span><span class="o">;</span></code></pre></figure>
+
+<p>对于actionUp事件，直接mIsBeingDragged = false，即脱离drag模式。也不进行拦截。mScroller.springBack是针对滑动回弹的情形，在没有回弹的
+情况下是返回false的，既不会有重绘操作。常规情况下，actionUp事件就是脱离drag模式，并清空激活的触摸点mActivePointerId。</p>
+
+<p>分析了拦截方法，接下来就得看onTouchEvent方法了，在我的“也谈Android事件分发”文章中已经详细的描述了事件分发的原理。</p>
+
+<p>对于onTouchEvent方法我们主要分析actionMove事件，其他的事件源码读者有空可以自己阅读。</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="k">case</span> <span class="nc">MotionEvent</span><span class="o">.</span><span class="na">ACTION_MOVE</span><span class="o">:</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">mIsBeingDragged</span><span class="o">)</span> <span class="o">{</span>
+        <span class="c1">// Scroll to follow the motion event</span>
+        <span class="kd">final</span> <span class="kt">int</span> <span class="n">activePointerIndex</span> <span class="o">=</span> <span class="n">ev</span><span class="o">.</span><span class="na">findPointerIndex</span><span class="o">(</span><span class="n">mActivePointerId</span><span class="o">);</span> <span class="c1">// 找到有效接触点</span>
+        <span class="kd">final</span> <span class="kt">float</span> <span class="n">y</span> <span class="o">=</span> <span class="n">ev</span><span class="o">.</span><span class="na">getY</span><span class="o">(</span><span class="n">activePointerIndex</span><span class="o">);</span>
+        <span class="kd">final</span> <span class="kt">int</span> <span class="n">deltaY</span> <span class="o">=</span> <span class="o">(</span><span class="kt">int</span><span class="o">)</span> <span class="o">(</span><span class="n">mLastMotionY</span> <span class="o">-</span> <span class="n">y</span><span class="o">);</span>
+        <span class="n">mLastMotionY</span> <span class="o">=</span> <span class="n">y</span><span class="o">;</span>
+
+        <span class="kd">final</span> <span class="kt">int</span> <span class="n">oldX</span> <span class="o">=</span> <span class="n">mScrollX</span><span class="o">;</span>
+        <span class="kd">final</span> <span class="kt">int</span> <span class="n">oldY</span> <span class="o">=</span> <span class="n">mScrollY</span><span class="o">;</span>
+        <span class="kd">final</span> <span class="kt">int</span> <span class="n">range</span> <span class="o">=</span> <span class="n">getScrollRange</span><span class="o">();</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">overScrollBy</span><span class="o">(</span><span class="mi">0</span><span class="o">,</span> <span class="n">deltaY</span><span class="o">,</span> <span class="mi">0</span><span class="o">,</span> <span class="n">mScrollY</span><span class="o">,</span> <span class="mi">0</span><span class="o">,</span> <span class="n">range</span><span class="o">,</span>
+                <span class="mi">0</span><span class="o">,</span> <span class="n">mOverscrollDistance</span><span class="o">,</span> <span class="kc">true</span><span class="o">))</span> <span class="o">{</span>
+            <span class="c1">// Break our velocity if we hit a scroll barrier.</span>
+            <span class="n">mVelocityTracker</span><span class="o">.</span><span class="na">clear</span><span class="o">();</span>
+        <span class="o">}</span>
+        <span class="n">onScrollChanged</span><span class="o">(</span><span class="n">mScrollX</span><span class="o">,</span> <span class="n">mScrollY</span><span class="o">,</span> <span class="n">oldX</span><span class="o">,</span> <span class="n">oldY</span><span class="o">);</span>
+    <span class="o">....</span></code></pre></figure>
+
+<p>关键方法是overScrollBy(),overScrollBy是View类的方法。</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">protected</span> <span class="kt">boolean</span> <span class="nf">overScrollBy</span><span class="o">(</span><span class="kt">int</span> <span class="n">deltaX</span><span class="o">,</span> <span class="kt">int</span> <span class="n">deltaY</span><span class="o">,</span>
+            <span class="kt">int</span> <span class="n">scrollX</span><span class="o">,</span> <span class="kt">int</span> <span class="n">scrollY</span><span class="o">,</span>
+            <span class="kt">int</span> <span class="n">scrollRangeX</span><span class="o">,</span> <span class="kt">int</span> <span class="n">scrollRangeY</span><span class="o">,</span>
+            <span class="kt">int</span> <span class="n">maxOverScrollX</span><span class="o">,</span> <span class="kt">int</span> <span class="n">maxOverScrollY</span><span class="o">,</span>
+            <span class="kt">boolean</span> <span class="n">isTouchEvent</span><span class="o">)</span> <span class="o">{</span>
+        <span class="kd">final</span> <span class="kt">int</span> <span class="n">overScrollMode</span> <span class="o">=</span> <span class="n">mOverScrollMode</span><span class="o">;</span>
+        <span class="kd">final</span> <span class="kt">boolean</span> <span class="n">canScrollHorizontal</span> <span class="o">=</span>
+                <span class="n">computeHorizontalScrollRange</span><span class="o">()</span> <span class="o">&gt;</span> <span class="n">computeHorizontalScrollExtent</span><span class="o">();</span>
+        <span class="kd">final</span> <span class="kt">boolean</span> <span class="n">canScrollVertical</span> <span class="o">=</span>
+                <span class="n">computeVerticalScrollRange</span><span class="o">()</span> <span class="o">&gt;</span> <span class="n">computeVerticalScrollExtent</span><span class="o">();</span>
+        <span class="kd">final</span> <span class="kt">boolean</span> <span class="n">overScrollHorizontal</span> <span class="o">=</span> <span class="n">overScrollMode</span> <span class="o">==</span> <span class="no">OVER_SCROLL_ALWAYS</span> <span class="o">||</span>
+                <span class="o">(</span><span class="n">overScrollMode</span> <span class="o">==</span> <span class="no">OVER_SCROLL_IF_CONTENT_SCROLLS</span> <span class="o">&amp;&amp;</span> <span class="n">canScrollHorizontal</span><span class="o">);</span>
+        <span class="kd">final</span> <span class="kt">boolean</span> <span class="n">overScrollVertical</span> <span class="o">=</span> <span class="n">overScrollMode</span> <span class="o">==</span> <span class="no">OVER_SCROLL_ALWAYS</span> <span class="o">||</span>
+                <span class="o">(</span><span class="n">overScrollMode</span> <span class="o">==</span> <span class="no">OVER_SCROLL_IF_CONTENT_SCROLLS</span> <span class="o">&amp;&amp;</span> <span class="n">canScrollVertical</span><span class="o">);</span>
+
+        <span class="kt">int</span> <span class="n">newScrollX</span> <span class="o">=</span> <span class="n">scrollX</span> <span class="o">+</span> <span class="n">deltaX</span><span class="o">;</span>
+        <span class="k">if</span> <span class="o">(!</span><span class="n">overScrollHorizontal</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">maxOverScrollX</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+        <span class="o">}</span>
+
+        <span class="kt">int</span> <span class="n">newScrollY</span> <span class="o">=</span> <span class="n">scrollY</span> <span class="o">+</span> <span class="n">deltaY</span><span class="o">;</span>
+        <span class="k">if</span> <span class="o">(!</span><span class="n">overScrollVertical</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">maxOverScrollY</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+        <span class="o">}</span>
+
+        <span class="c1">// Clamp values if at the limits and record</span>
+        <span class="kd">final</span> <span class="kt">int</span> <span class="n">left</span> <span class="o">=</span> <span class="o">-</span><span class="n">maxOverScrollX</span><span class="o">;</span>
+        <span class="kd">final</span> <span class="kt">int</span> <span class="n">right</span> <span class="o">=</span> <span class="n">maxOverScrollX</span> <span class="o">+</span> <span class="n">scrollRangeX</span><span class="o">;</span>
+        <span class="kd">final</span> <span class="kt">int</span> <span class="n">top</span> <span class="o">=</span> <span class="o">-</span><span class="n">maxOverScrollY</span><span class="o">;</span>
+        <span class="kd">final</span> <span class="kt">int</span> <span class="n">bottom</span> <span class="o">=</span> <span class="n">maxOverScrollY</span> <span class="o">+</span> <span class="n">scrollRangeY</span><span class="o">;</span>
+
+        <span class="kt">boolean</span> <span class="n">clampedX</span> <span class="o">=</span> <span class="kc">false</span><span class="o">;</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">newScrollX</span> <span class="o">&gt;</span> <span class="n">right</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">newScrollX</span> <span class="o">=</span> <span class="n">right</span><span class="o">;</span>
+            <span class="n">clampedX</span> <span class="o">=</span> <span class="kc">true</span><span class="o">;</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">newScrollX</span> <span class="o">&lt;</span> <span class="n">left</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">newScrollX</span> <span class="o">=</span> <span class="n">left</span><span class="o">;</span>
+            <span class="n">clampedX</span> <span class="o">=</span> <span class="kc">true</span><span class="o">;</span>
+        <span class="o">}</span>
+
+        <span class="kt">boolean</span> <span class="n">clampedY</span> <span class="o">=</span> <span class="kc">false</span><span class="o">;</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">newScrollY</span> <span class="o">&gt;</span> <span class="n">bottom</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">newScrollY</span> <span class="o">=</span> <span class="n">bottom</span><span class="o">;</span>
+            <span class="n">clampedY</span> <span class="o">=</span> <span class="kc">true</span><span class="o">;</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">newScrollY</span> <span class="o">&lt;</span> <span class="n">top</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">newScrollY</span> <span class="o">=</span> <span class="n">top</span><span class="o">;</span>
+            <span class="n">clampedY</span> <span class="o">=</span> <span class="kc">true</span><span class="o">;</span>
+        <span class="o">}</span>
+
+        <span class="n">onOverScrolled</span><span class="o">(</span><span class="n">newScrollX</span><span class="o">,</span> <span class="n">newScrollY</span><span class="o">,</span> <span class="n">clampedX</span><span class="o">,</span> <span class="n">clampedY</span><span class="o">);</span>
+
+        <span class="k">return</span> <span class="n">clampedX</span> <span class="o">||</span> <span class="n">clampedY</span><span class="o">;</span>
+    <span class="o">}</span></code></pre></figure>
+
+<p>overScrollBy其实就是检查你有没有一滑到底（边界）。但是其中关键是他调用了onOverScrolled。
+view的onOverScrolled是一个空的实现，那我们去看下ScrollView控件是如何实现的</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="nd">@Override</span>
+  <span class="kd">protected</span> <span class="kt">void</span> <span class="nf">onOverScrolled</span><span class="o">(</span><span class="kt">int</span> <span class="n">scrollX</span><span class="o">,</span> <span class="kt">int</span> <span class="n">scrollY</span><span class="o">,</span>
+          <span class="kt">boolean</span> <span class="n">clampedX</span><span class="o">,</span> <span class="kt">boolean</span> <span class="n">clampedY</span><span class="o">)</span> <span class="o">{</span>
+      <span class="c1">// Treat animating scrolls differently; see #computeScroll() for why.</span>
+      <span class="k">if</span> <span class="o">(!</span><span class="n">mScroller</span><span class="o">.</span><span class="na">isFinished</span><span class="o">())</span> <span class="o">{</span>
+          <span class="n">mScrollX</span> <span class="o">=</span> <span class="n">scrollX</span><span class="o">;</span>
+          <span class="n">mScrollY</span> <span class="o">=</span> <span class="n">scrollY</span><span class="o">;</span>
+          <span class="k">if</span> <span class="o">(</span><span class="n">clampedY</span><span class="o">)</span> <span class="o">{</span>
+              <span class="n">mScroller</span><span class="o">.</span><span class="na">springBack</span><span class="o">(</span><span class="n">mScrollX</span><span class="o">,</span> <span class="n">mScrollY</span><span class="o">,</span> <span class="mi">0</span><span class="o">,</span> <span class="mi">0</span><span class="o">,</span> <span class="mi">0</span><span class="o">,</span> <span class="n">getScrollRange</span><span class="o">());</span>
+          <span class="o">}</span>
+      <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+          <span class="kd">super</span><span class="o">.</span><span class="na">scrollTo</span><span class="o">(</span><span class="n">scrollX</span><span class="o">,</span> <span class="n">scrollY</span><span class="o">);</span>
+      <span class="o">}</span>
+      <span class="n">awakenScrollBars</span><span class="o">();</span>
+  <span class="o">}</span></code></pre></figure>
+
+<p>mScroller.isFinished()其实标记的就是fling模式，后续我们可以验证这个观点。显然我们在处理actionMove事件，是处于drag模式，而非
+fling模式的。所以，其实是走的super.scrollTo(scrollX, scrollY)分支了。看下view.scrollTo方法</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">public</span> <span class="kt">void</span> <span class="nf">scrollTo</span><span class="o">(</span><span class="kt">int</span> <span class="n">x</span><span class="o">,</span> <span class="kt">int</span> <span class="n">y</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">mScrollX</span> <span class="o">!=</span> <span class="n">x</span> <span class="o">||</span> <span class="n">mScrollY</span> <span class="o">!=</span> <span class="n">y</span><span class="o">)</span> <span class="o">{</span>
+            <span class="kt">int</span> <span class="n">oldX</span> <span class="o">=</span> <span class="n">mScrollX</span><span class="o">;</span>
+            <span class="kt">int</span> <span class="n">oldY</span> <span class="o">=</span> <span class="n">mScrollY</span><span class="o">;</span>
+            <span class="n">mScrollX</span> <span class="o">=</span> <span class="n">x</span><span class="o">;</span>
+            <span class="n">mScrollY</span> <span class="o">=</span> <span class="n">y</span><span class="o">;</span>
+            <span class="n">onScrollChanged</span><span class="o">(</span><span class="n">mScrollX</span><span class="o">,</span> <span class="n">mScrollY</span><span class="o">,</span> <span class="n">oldX</span><span class="o">,</span> <span class="n">oldY</span><span class="o">);</span>
+            <span class="k">if</span> <span class="o">(!</span><span class="n">awakenScrollBars</span><span class="o">())</span> <span class="o">{</span>
+                <span class="n">invalidate</span><span class="o">();</span>
+            <span class="o">}</span>
+        <span class="o">}</span>
+    <span class="o">}</span></code></pre></figure>
+
+<p>代码非常的简单，但是属于核心代码。作用就是更新mScrollY,然后通过invalidate()进行重绘。而所谓view的滚动，它的原理就是更新mScrollY然后
+刷新页面。</p>
+
+<p>由于actionMove事件都是连续的，而且每次y轴的变化量不大，所以在drag模式下,不会突然一下滚动到目标位置。但是scrollTo也是View类的一个
+公开api,当目标位置和当前位置差值较大时，会突然滚动过去。往往我们需要有一个缓缓滚动过去的动画，这个时候ScrollView的特殊Api smoothScrollTo
+就派上用场了。</p>
+
+<p>smoothScrollTo的核心类就是Scroller类了，也是接下来重点要分析的一个类。<br />
+先看看ScrollView的smoothScrollTo方法</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">public</span> <span class="kd">final</span> <span class="kt">void</span> <span class="nf">smoothScrollBy</span><span class="o">(</span><span class="kt">int</span> <span class="n">dx</span><span class="o">,</span> <span class="kt">int</span> <span class="n">dy</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">getChildCount</span><span class="o">()</span> <span class="o">==</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+        <span class="c1">// Nothing to do.</span>
+        <span class="k">return</span><span class="o">;</span>
+    <span class="o">}</span>
+    <span class="kt">long</span> <span class="n">duration</span> <span class="o">=</span> <span class="nc">AnimationUtils</span><span class="o">.</span><span class="na">currentAnimationTimeMillis</span><span class="o">()</span> <span class="o">-</span> <span class="n">mLastScroll</span><span class="o">;</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">duration</span> <span class="o">&gt;</span> <span class="no">ANIMATED_SCROLL_GAP</span><span class="o">)</span> <span class="o">{</span>
+        <span class="kd">final</span> <span class="kt">int</span> <span class="n">height</span> <span class="o">=</span> <span class="n">getHeight</span><span class="o">()</span> <span class="o">-</span> <span class="n">mPaddingBottom</span> <span class="o">-</span> <span class="n">mPaddingTop</span><span class="o">;</span>
+        <span class="kd">final</span> <span class="kt">int</span> <span class="n">bottom</span> <span class="o">=</span> <span class="n">getChildAt</span><span class="o">(</span><span class="mi">0</span><span class="o">).</span><span class="na">getHeight</span><span class="o">();</span>
+        <span class="kd">final</span> <span class="kt">int</span> <span class="n">maxY</span> <span class="o">=</span> <span class="nc">Math</span><span class="o">.</span><span class="na">max</span><span class="o">(</span><span class="mi">0</span><span class="o">,</span> <span class="n">bottom</span> <span class="o">-</span> <span class="n">height</span><span class="o">);</span>
+        <span class="kd">final</span> <span class="kt">int</span> <span class="n">scrollY</span> <span class="o">=</span> <span class="n">mScrollY</span><span class="o">;</span>
+        <span class="n">dy</span> <span class="o">=</span> <span class="nc">Math</span><span class="o">.</span><span class="na">max</span><span class="o">(</span><span class="mi">0</span><span class="o">,</span> <span class="nc">Math</span><span class="o">.</span><span class="na">min</span><span class="o">(</span><span class="n">scrollY</span> <span class="o">+</span> <span class="n">dy</span><span class="o">,</span> <span class="n">maxY</span><span class="o">))</span> <span class="o">-</span> <span class="n">scrollY</span><span class="o">;</span>
+
+        <span class="n">mScroller</span><span class="o">.</span><span class="na">startScroll</span><span class="o">(</span><span class="n">mScrollX</span><span class="o">,</span> <span class="n">scrollY</span><span class="o">,</span> <span class="mi">0</span><span class="o">,</span> <span class="n">dy</span><span class="o">);</span>
+        <span class="n">invalidate</span><span class="o">();</span>
+    <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(!</span><span class="n">mScroller</span><span class="o">.</span><span class="na">isFinished</span><span class="o">())</span> <span class="o">{</span>
+            <span class="n">mScroller</span><span class="o">.</span><span class="na">abortAnimation</span><span class="o">();</span>
+        <span class="o">}</span>
+        <span class="n">scrollBy</span><span class="o">(</span><span class="n">dx</span><span class="o">,</span> <span class="n">dy</span><span class="o">);</span>
+    <span class="o">}</span>
+    <span class="n">mLastScroll</span> <span class="o">=</span> <span class="nc">AnimationUtils</span><span class="o">.</span><span class="na">currentAnimationTimeMillis</span><span class="o">();</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>核心方法只有两句</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java">  <span class="n">mScroller</span><span class="o">.</span><span class="na">startScroll</span><span class="o">(</span><span class="n">mScrollX</span><span class="o">,</span> <span class="n">scrollY</span><span class="o">,</span> <span class="mi">0</span><span class="o">,</span> <span class="n">dy</span><span class="o">);</span>
+  <span class="n">invalidate</span><span class="o">();</span></code></pre></figure>
+
+<p>先来看mScroller.startScroll做了什么</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">public</span> <span class="kt">void</span> <span class="nf">startScroll</span><span class="o">(</span><span class="kt">int</span> <span class="n">startX</span><span class="o">,</span> <span class="kt">int</span> <span class="n">startY</span><span class="o">,</span> <span class="kt">int</span> <span class="n">dx</span><span class="o">,</span> <span class="kt">int</span> <span class="n">dy</span><span class="o">,</span> <span class="kt">int</span> <span class="n">duration</span><span class="o">)</span> <span class="o">{</span>
+    <span class="n">mMode</span> <span class="o">=</span> <span class="no">SCROLL_MODE</span><span class="o">;</span>
+    <span class="n">mScrollerX</span><span class="o">.</span><span class="na">startScroll</span><span class="o">(</span><span class="n">startX</span><span class="o">,</span> <span class="n">dx</span><span class="o">,</span> <span class="n">duration</span><span class="o">);</span>
+    <span class="n">mScrollerY</span><span class="o">.</span><span class="na">startScroll</span><span class="o">(</span><span class="n">startY</span><span class="o">,</span> <span class="n">dy</span><span class="o">,</span> <span class="n">duration</span><span class="o">);</span>
+<span class="o">}</span>
+
+<span class="c1">// OverScroller内部类MagneticOverScroller的方法</span>
+<span class="kt">void</span> <span class="nf">startScroll</span><span class="o">(</span><span class="kt">int</span> <span class="n">start</span><span class="o">,</span> <span class="kt">int</span> <span class="n">distance</span><span class="o">,</span> <span class="kt">int</span> <span class="n">duration</span><span class="o">)</span> <span class="o">{</span>
+    <span class="n">mFinished</span> <span class="o">=</span> <span class="kc">false</span><span class="o">;</span>
+
+    <span class="n">mStart</span> <span class="o">=</span> <span class="n">start</span><span class="o">;</span>
+    <span class="n">mFinal</span> <span class="o">=</span> <span class="n">start</span> <span class="o">+</span> <span class="n">distance</span><span class="o">;</span>
+
+    <span class="n">mStartTime</span> <span class="o">=</span> <span class="nc">AnimationUtils</span><span class="o">.</span><span class="na">currentAnimationTimeMillis</span><span class="o">();</span>
+    <span class="n">mDuration</span> <span class="o">=</span> <span class="n">duration</span><span class="o">;</span>
+
+    <span class="c1">// Unused</span>
+    <span class="n">mDeceleration</span> <span class="o">=</span> <span class="mf">0.0f</span><span class="o">;</span>
+    <span class="n">mVelocity</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>这里面好像没干什么事情，无非记录了下开始的位置，结束的位置，动画开始的事件，动画持续的时间等属性。 <br />
+那么实现动画滚动的代码到底在哪呢。其实这里需要你对View类的绘制源码有一定的了解，需要有一个对源码的熟悉度，我就直接上源码吧 <br />
+ViewGroup的drawChild方法里</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"> <span class="kd">protected</span> <span class="kt">boolean</span> <span class="nf">drawChild</span><span class="o">(</span><span class="nc">Canvas</span> <span class="n">canvas</span><span class="o">,</span> <span class="nc">View</span> <span class="n">child</span><span class="o">,</span> <span class="kt">long</span> <span class="n">drawingTime</span><span class="o">)</span> <span class="o">{</span>
+  <span class="o">....</span>
+  <span class="c1">// Sets the flag as early as possible to allow draw() implementations</span>
+      <span class="c1">// to call invalidate() successfully when doing animations</span>
+      <span class="n">child</span><span class="o">.</span><span class="na">mPrivateFlags</span> <span class="o">|=</span> <span class="no">DRAWN</span><span class="o">;</span>
+
+      <span class="k">if</span> <span class="o">(!</span><span class="n">concatMatrix</span> <span class="o">&amp;&amp;</span> <span class="n">canvas</span><span class="o">.</span><span class="na">quickReject</span><span class="o">(</span><span class="n">cl</span><span class="o">,</span> <span class="n">ct</span><span class="o">,</span> <span class="n">cr</span><span class="o">,</span> <span class="n">cb</span><span class="o">,</span> <span class="nc">Canvas</span><span class="o">.</span><span class="na">EdgeType</span><span class="o">.</span><span class="na">BW</span><span class="o">)</span> <span class="o">&amp;&amp;</span>
+              <span class="o">(</span><span class="n">child</span><span class="o">.</span><span class="na">mPrivateFlags</span> <span class="o">&amp;</span> <span class="no">DRAW_ANIMATION</span><span class="o">)</span> <span class="o">==</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+          <span class="k">return</span> <span class="n">more</span><span class="o">;</span>
+      <span class="o">}</span>
+
+      <span class="n">child</span><span class="o">.</span><span class="na">computeScroll</span><span class="o">();</span>
+
+      <span class="kd">final</span> <span class="kt">int</span> <span class="n">sx</span> <span class="o">=</span> <span class="n">child</span><span class="o">.</span><span class="na">mScrollX</span><span class="o">;</span>
+      <span class="kd">final</span> <span class="kt">int</span> <span class="n">sy</span> <span class="o">=</span> <span class="n">child</span><span class="o">.</span><span class="na">mScrollY</span><span class="o">;</span>
+  <span class="o">....</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>核心就是child.computeScroll()这个方法了。后续可以对view的绘制体系做一篇源码分析，主要是涉及的内容太多了。<br />
+也就是每次重绘时，viewGroup在绘制child时都会计算child的scroll值。那么接下来就简单了，我们看下ScrollView是如何实现computeScroll方法吧</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="nd">@Override</span>
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">computeScroll</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">mScroller</span><span class="o">.</span><span class="na">computeScrollOffset</span><span class="o">())</span> <span class="o">{</span>
+            <span class="c1">// This is called at drawing time by ViewGroup.  We don't want to</span>
+            <span class="c1">// re-show the scrollbars at this point, which scrollTo will do,</span>
+            <span class="c1">// so we replicate most of scrollTo here.</span>
+            <span class="c1">//</span>
+            <span class="c1">//         It's a little odd to call onScrollChanged from inside the drawing.</span>
+            <span class="c1">//</span>
+            <span class="c1">//         It is, except when you remember that computeScroll() is used to</span>
+            <span class="c1">//         animate scrolling. So unless we want to defer the onScrollChanged()</span>
+            <span class="c1">//         until the end of the animated scrolling, we don't really have a</span>
+            <span class="c1">//         choice here.</span>
+            <span class="c1">//</span>
+            <span class="c1">//         I agree.  The alternative, which I think would be worse, is to post</span>
+            <span class="c1">//         something and tell the subclasses later.  This is bad because there</span>
+            <span class="c1">//         will be a window where mScrollX/Y is different from what the app</span>
+            <span class="c1">//         thinks it is.</span>
+            <span class="c1">//</span>
+            <span class="kt">int</span> <span class="n">oldX</span> <span class="o">=</span> <span class="n">mScrollX</span><span class="o">;</span>
+            <span class="kt">int</span> <span class="n">oldY</span> <span class="o">=</span> <span class="n">mScrollY</span><span class="o">;</span>
+            <span class="kt">int</span> <span class="n">x</span> <span class="o">=</span> <span class="n">mScroller</span><span class="o">.</span><span class="na">getCurrX</span><span class="o">();</span>
+            <span class="kt">int</span> <span class="n">y</span> <span class="o">=</span> <span class="n">mScroller</span><span class="o">.</span><span class="na">getCurrY</span><span class="o">();</span>
+
+            <span class="k">if</span> <span class="o">(</span><span class="n">oldX</span> <span class="o">!=</span> <span class="n">x</span> <span class="o">||</span> <span class="n">oldY</span> <span class="o">!=</span> <span class="n">y</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">overScrollBy</span><span class="o">(</span><span class="n">x</span> <span class="o">-</span> <span class="n">oldX</span><span class="o">,</span> <span class="n">y</span> <span class="o">-</span> <span class="n">oldY</span><span class="o">,</span> <span class="n">oldX</span><span class="o">,</span> <span class="n">oldY</span><span class="o">,</span> <span class="mi">0</span><span class="o">,</span> <span class="n">getScrollRange</span><span class="o">(),</span>
+                        <span class="mi">0</span><span class="o">,</span> <span class="n">mOverflingDistance</span><span class="o">,</span> <span class="kc">false</span><span class="o">);</span>
+                <span class="n">onScrollChanged</span><span class="o">(</span><span class="n">mScrollX</span><span class="o">,</span> <span class="n">mScrollY</span><span class="o">,</span> <span class="n">oldX</span><span class="o">,</span> <span class="n">oldY</span><span class="o">);</span>
+
+                <span class="kd">final</span> <span class="kt">int</span> <span class="n">range</span> <span class="o">=</span> <span class="n">getScrollRange</span><span class="o">();</span>
+                <span class="kd">final</span> <span class="kt">int</span> <span class="n">overscrollMode</span> <span class="o">=</span> <span class="n">getOverScrollMode</span><span class="o">();</span>
+                <span class="k">if</span> <span class="o">(</span><span class="n">overscrollMode</span> <span class="o">==</span> <span class="no">OVER_SCROLL_ALWAYS</span> <span class="o">||</span>
+                        <span class="o">(</span><span class="n">overscrollMode</span> <span class="o">==</span> <span class="no">OVER_SCROLL_IF_CONTENT_SCROLLS</span> <span class="o">&amp;&amp;</span> <span class="n">range</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="o">))</span> <span class="o">{</span>
+                    <span class="k">if</span> <span class="o">(</span><span class="n">y</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="o">&amp;&amp;</span> <span class="n">oldY</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+                        <span class="n">mEdgeGlowTop</span><span class="o">.</span><span class="na">onAbsorb</span><span class="o">((</span><span class="kt">int</span><span class="o">)</span> <span class="n">mScroller</span><span class="o">.</span><span class="na">getCurrVelocity</span><span class="o">());</span>
+                    <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">y</span> <span class="o">&gt;</span> <span class="n">range</span> <span class="o">&amp;&amp;</span> <span class="n">oldY</span> <span class="o">&lt;=</span> <span class="n">range</span><span class="o">)</span> <span class="o">{</span>
+                        <span class="n">mEdgeGlowBottom</span><span class="o">.</span><span class="na">onAbsorb</span><span class="o">((</span><span class="kt">int</span><span class="o">)</span> <span class="n">mScroller</span><span class="o">.</span><span class="na">getCurrVelocity</span><span class="o">());</span>
+                    <span class="o">}</span>
+                <span class="o">}</span>
+            <span class="o">}</span>
+            <span class="n">awakenScrollBars</span><span class="o">();</span>
+
+            <span class="c1">// Keep on drawing until the animation has finished.</span>
+            <span class="n">postInvalidate</span><span class="o">();</span>
+        <span class="o">}</span>
+    <span class="o">}</span></code></pre></figure>
+
+<p>核心代码也不过两句，overScrollBy和postInvalidate()。无需分析了。重点关注下mScroller.computeScrollOffset()</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">public</span> <span class="kt">boolean</span> <span class="nf">computeScrollOffset</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">isFinished</span><span class="o">())</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="kc">false</span><span class="o">;</span>
+        <span class="o">}</span>
+
+        <span class="k">switch</span> <span class="o">(</span><span class="n">mMode</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">case</span> <span class="nl">SCROLL_MODE:</span>
+                <span class="kt">long</span> <span class="n">time</span> <span class="o">=</span> <span class="nc">AnimationUtils</span><span class="o">.</span><span class="na">currentAnimationTimeMillis</span><span class="o">();</span>
+                <span class="c1">// Any scroller can be used for time, since they were started</span>
+                <span class="c1">// together in scroll mode. We use X here.</span>
+                <span class="kd">final</span> <span class="kt">long</span> <span class="n">elapsedTime</span> <span class="o">=</span> <span class="n">time</span> <span class="o">-</span> <span class="n">mScrollerX</span><span class="o">.</span><span class="na">mStartTime</span><span class="o">;</span>
+
+                <span class="kd">final</span> <span class="kt">int</span> <span class="n">duration</span> <span class="o">=</span> <span class="n">mScrollerX</span><span class="o">.</span><span class="na">mDuration</span><span class="o">;</span>
+                <span class="k">if</span> <span class="o">(</span><span class="n">elapsedTime</span> <span class="o">&lt;</span> <span class="n">duration</span><span class="o">)</span> <span class="o">{</span>
+                    <span class="kt">float</span> <span class="n">q</span> <span class="o">=</span> <span class="o">(</span><span class="kt">float</span><span class="o">)</span> <span class="o">(</span><span class="n">elapsedTime</span><span class="o">)</span> <span class="o">/</span> <span class="n">duration</span><span class="o">;</span>
+
+                    <span class="k">if</span> <span class="o">(</span><span class="n">mInterpolator</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span>
+                        <span class="n">q</span> <span class="o">=</span> <span class="nc">Scroller</span><span class="o">.</span><span class="na">viscousFluid</span><span class="o">(</span><span class="n">q</span><span class="o">);</span>
+                    <span class="k">else</span>
+                        <span class="n">q</span> <span class="o">=</span> <span class="n">mInterpolator</span><span class="o">.</span><span class="na">getInterpolation</span><span class="o">(</span><span class="n">q</span><span class="o">);</span>
+
+                    <span class="n">mScrollerX</span><span class="o">.</span><span class="na">updateScroll</span><span class="o">(</span><span class="n">q</span><span class="o">);</span>
+                    <span class="n">mScrollerY</span><span class="o">.</span><span class="na">updateScroll</span><span class="o">(</span><span class="n">q</span><span class="o">);</span>
+                <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+                    <span class="n">abortAnimation</span><span class="o">();</span>
+                <span class="o">}</span>
+                <span class="k">break</span><span class="o">;</span>
+
+            <span class="k">case</span> <span class="nl">FLING_MODE:</span>
+                <span class="k">if</span> <span class="o">(!</span><span class="n">mScrollerX</span><span class="o">.</span><span class="na">mFinished</span><span class="o">)</span> <span class="o">{</span>
+                    <span class="k">if</span> <span class="o">(!</span><span class="n">mScrollerX</span><span class="o">.</span><span class="na">update</span><span class="o">())</span> <span class="o">{</span>
+                        <span class="k">if</span> <span class="o">(!</span><span class="n">mScrollerX</span><span class="o">.</span><span class="na">continueWhenFinished</span><span class="o">())</span> <span class="o">{</span>
+                            <span class="n">mScrollerX</span><span class="o">.</span><span class="na">finish</span><span class="o">();</span>
+                        <span class="o">}</span>
+                    <span class="o">}</span>
+                <span class="o">}</span>
+
+                <span class="k">if</span> <span class="o">(!</span><span class="n">mScrollerY</span><span class="o">.</span><span class="na">mFinished</span><span class="o">)</span> <span class="o">{</span>
+                    <span class="k">if</span> <span class="o">(!</span><span class="n">mScrollerY</span><span class="o">.</span><span class="na">update</span><span class="o">())</span> <span class="o">{</span>
+                        <span class="k">if</span> <span class="o">(!</span><span class="n">mScrollerY</span><span class="o">.</span><span class="na">continueWhenFinished</span><span class="o">())</span> <span class="o">{</span>
+                            <span class="n">mScrollerY</span><span class="o">.</span><span class="na">finish</span><span class="o">();</span>
+                        <span class="o">}</span>
+                    <span class="o">}</span>
+                <span class="o">}</span>
+
+                <span class="k">break</span><span class="o">;</span>
+        <span class="o">}</span>
+
+        <span class="k">return</span> <span class="kc">true</span><span class="o">;</span>
+    <span class="o">}</span></code></pre></figure>
+
+<p>mMode只有在用到mScrooler类的时候才会有值，所以像前面提到的onTouchEvent里面，mMode是没有值的，computeScrollOffset()是会直接返回true的。 <br />
+为什么mMode有值很重要呢，因为就是mScrollerY.updateScroll(q)实现了动态改变滑动的目标值，即我们的smoothScroll的动效。</p>
+
+<p>那么到现在呢，对于ScrollView和Scroller类如何实现滑动，无论是走触摸事件，还是调用api smoothScrollTo。我们已经讲的非常清晰了。这篇博客就
+到此为止了。</p>
+:ET

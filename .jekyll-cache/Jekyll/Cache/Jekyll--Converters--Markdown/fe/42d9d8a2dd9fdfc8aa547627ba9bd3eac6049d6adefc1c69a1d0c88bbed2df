@@ -1,0 +1,50 @@
+I"�<ul>
+  <li>
+    <p>指针在内存中的表现
+<img src="/assets/images/2019-pic/p1.png" alt="p1" /></p>
+  </li>
+  <li>
+    <p>c++中模板也能重载</p>
+  </li>
+  <li>
+    <p>任何不会修改数据成员的函数都应该声明为const类型</p>
+  </li>
+  <li>现在我们就可以知道了，其实在构造函数里面调用等于号并不是真正意义上的“初始化”。这个过程相当于：
+    <ol>
+      <li>系统创建成员变量；</li>
+      <li>创建完后再进行赋值操作。
+而在构造函数后面跟冒号，就相当于：</li>
+      <li>系统创建成员变量并且初始化。也就是系统为成员变量分配了一块内存并且把相应的数据给填了进去。而构造函数里面调用等于号的方式是分配好后再进行赋值，多了一个步骤。</li>
+    </ol>
+  </li>
+  <li>
+    <p>c++中当定义类对象是指针对象时候，就需要用到 “-&gt;” 指向类中的成员；当定义一般对象时候时就需要用到 “.” 指向类中的成员</p>
+  </li>
+  <li>
+    <p>显示管理系统源端获取的镜像数据经过音视频编码（H264），然后进行HDCP加密和PES packetization及TS流化（转换为TS流）后 ，最后打包  成RTP包经过UDP通道发送到SINK端，SINK端要经过相反的处理过程，从UDP通道接收RTP包，然后进行TS解析和PES去packetization化和HDCP解密，最后送给解码器进行解码。解码后的数据送给播放器的呈现器进行呈现。</p>
+  </li>
+  <li>
+    <p>1.先看 图解tcp/ip 抓重点 。理解面向连接，无连接，tcp粘包，udp有界等2.然后看 linux/unix系统编程手册 socket几章，号称超越apue的好书。这几章将socket,select,poll,epoll讲的很到位。理解select，poll的原理，大并发为啥epoll有优势，epoll的水平触发和边缘触发区别，如何解决边缘触发饿死问题等等。3.看 tornado源码，这时候看起来应该比较轻松。比如tornado中用pipe做waker，上本书都有讲解。4.阅读 effective tcp/ip …5.慢慢读 tcp/ip详解卷一和unix网络编程为啥最经典的书最后推荐，主要是让大家刚开始不要太纠结细节，unp实在太厚了，会吓死自己的。当能力够了再回头，才有共鸣，才有大收获。</p>
+  </li>
+  <li>
+    <p>1.常量指针
+定义：具有只能够读取内存中数据，却不能够修改内存中数据的属性的指针，称为指向常量的指针，简称常量指针。
+声明：const int * p; int const * p;
+注：可以将一个常量的地址赋值给一个对应类型的常量指针，因为常量指针不能够通过指针修改内粗数据。只能防止通过指针引用修改内存中的数据，并不保护指针所指向的对象。</p>
+
+    <p>2.指针常量
+定义：指针常量是指指针所指向的位置不能改变，即指针本身是一个常量，但是指针所指向的内容可以改变。
+声明：int * const p=&amp;a;
+注：指针常量必须在声明的同时对其初始化，不允许先声明一个指针常量随后再对其赋值，这和声明一般的常量是一样的。</p>
+  </li>
+</ul>
+
+<h3 id="jni">JNI</h3>
+
+<p>The first parameter, the JNIEnv interface pointer,
+points to a location that contains a pointer to a function table. Each entry
+in the function table points to a JNI function. Native methods always access data
+structures in the Java virtual machine through one of the JNI functions.</p>
+
+<p>The second parameter is a reference to the Java object inside which this native method has been declared in. You can use it to call the other methods of the Java object from the current JNI function, i.e. Call Java instance methods from JNI code written in C or C++.</p>
+:ET
