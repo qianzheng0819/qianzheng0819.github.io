@@ -1,9 +1,0 @@
-I"d<h3 id="observable">Observable</h3>
-<p>Java util包提供的一个观察者类工具，项目中直接new Observable()即可。
-用法：</p>
-
-<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="nc">Observable</span> <span class="n">o</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">Observable</span><span class="o">();</span>
-<span class="n">o</span><span class="o">.</span><span class="na">addObserver</span><span class="o">(</span><span class="no">T</span> <span class="n">t</span><span class="o">);</span> <span class="c1">// T:Observer interface</span>
-<span class="n">o</span><span class="o">.</span><span class="na">setChanged</span><span class="o">();</span>
-<span class="n">o</span><span class="o">.</span><span class="na">notifyObservers</span><span class="o">();</span></code></pre></figure>
-:ET
