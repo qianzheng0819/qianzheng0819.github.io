@@ -24,6 +24,8 @@ description: 为了节约记忆成本的git技巧记录
 * git branch -vv查看映射关系
 * git fetch --prune https://blog.csdn.net/sgs595595/article/details/72480346
 * 首先清除远程分支的本地缓存：git fetch -p origin
+* git config --global http.proxy "http://127.0.0.1:1080"
+  git config --global https.proxy "https://127.0.0.1:1080"
 * WURQ2CZLCOGDUSXM
 
 ### adb相关
