@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "view.invalidate,Choreographer源码分析"
+title:  "Choreographer源码分析"
 date:   2023-05-31 09:59:00 +0800
 categories: android
 tags:   Framework
@@ -9,7 +9,10 @@ description:
 
 前言
 -------------------------
-源码版本是android4.4.4,该版本已经引入了Choreographer类。稍低版本的源码，主干功能更加清晰，方便阅读
+源码版本是android4.4.4,该版本已经引入了Choreographer类。稍低版本的源码，主干功能更加清晰，方便阅读。
+
+当我们滚动视图时，scrollView里的scroller类会不断更新mScrollY，然后调用invalidate()刷新，
+我们看Choreographer是如何响应应用的请求。
 
 View.invalidate()源码分析
 --------------------------
@@ -183,3 +186,41 @@ private final class FrameHandler extends Handler {
     }
 }
 {% endhighlight %}
+
+#### Choreographer 初始化链
+在 Activity 启动过程，执行完 onResume 后，会调用 Activity.makeVisible()，然后再调用到 addView()，
+层层调用会进入如下方法
+{% highlight java %}
+ActivityThread.handleResumeActivity(IBinder, boolean, boolean, String) (android.app)
+-->WindowManagerImpl.addView(View, LayoutParams) (android.view)
+  -->WindowManagerGlobal.addView(View, LayoutParams, Display, Window) (android.view)
+    -->ViewRootImpl.ViewRootImpl(Context, Display) (android.view)
+    public ViewRootImpl(Context context, Display display) {
+        ......
+        mChoreographer = Choreographer.getInstance();
+        ......
+    }
+{% endhighlight %}
+
+Choreographer源码调用的时序图
+------------------------------
+![p]({{ site.baseurl }}/assets/images/2023-pic/p1.jpg)
+
+##### 3.postSyncBarrier
+{% highlight java %}
+void scheduleTraversals() {
+    if (!mTraversalScheduled) {
+        mTraversalScheduled = true;
+        mTraversalBarrier = mHandler.getLooper().postSyncBarrier();
+        mChoreographer.postCallback(
+                Choreographer.CALLBACK_TRAVERSAL, mTraversalRunnable, null);
+        scheduleConsumeBatchedInput();
+    }
+}
+{% endhighlight %}
+
+Handler的消息分3种，普通消息，异步消息和屏障消息
+普通消息又叫做同步消息，屏障消息是屏障同步消息
+`设置了同步屏障之后，Handler只会处理异步消息。再换句话说，同步屏障为Handler消息机制增加了一种简单的优先级机制，
+异步消息的优先级要高于同步消息。`
+源码数据结构并不复杂，具体分析可参考[博客](https://www.jianshu.com/p/ed318296f95f)
