@@ -526,7 +526,190 @@ View getViewForPosition(int position, boolean dryRun) {
 
 View的回收并不像View的创建那么复杂，这里只涉及了两层缓存mCachedViews与mRecyclerPool，mCachedViews相当于一个先进先出的数据结构，每当有新的View需要缓存时都会将新的View存入mCachedViews，而mCachedViews则会移除头元素，并将头元素放入mRecyclerPool，所以mCachedViews相当于一级缓存，mRecyclerPool则相当于二级缓存，并且mRecyclerPool是可以多个RecyclerView共享的，这在类似于多Tab的新闻类应用会有很大的用处，因为多个Tab下的多个RecyclerView可以共用一个二级缓存。减少内存开销。
 
-如此，就是对RecyclerView的缓存逻辑的简要分析。
+如此，就是对RecyclerView的缓存逻辑的简要分析。  
+
+## RecyclerView最大优势：局部更新
+{% highlight java %}
+RecyclerView.Adapter.class
+public final void notifyItemRangeRemoved(int positionStart, int itemCount) {
+            mObservable.notifyItemRangeRemoved(positionStart, itemCount);
+        }
+
+
+RecyclerView.RecyclerViewDataObserver.class
+@Override
+        public void onItemRangeRemoved(int positionStart, int itemCount) {
+            assertNotInLayoutOrScroll(null);
+            if (mAdapterHelper.onItemRangeRemoved(positionStart, itemCount)) {
+                triggerUpdateProcessor();
+            }
+        }
+
+
+RecyclerView.AdapterHelper.class
+boolean onItemRangeRemoved(int positionStart, int itemCount) {
+        if (itemCount < 1) {
+            return false;
+        }
+        mPendingUpdates.add(obtainUpdateOp(UpdateOp.REMOVE, positionStart, itemCount, null));
+        mExistingUpdateTypes |= UpdateOp.REMOVE;
+        return mPendingUpdates.size() == 1;
+    }
+{% endhighlight %}
+
+可以看到使用了观察者设计模式，`onItemRangeRemoved`方法里主要是添加了UpdateOp.REMOVE这个op(操作),接着调用
+`triggerUpdateProcessor`方法   
+
+{% highlight java %}
+void triggerUpdateProcessor() {
+      if (POST_UPDATES_ON_ANIMATION && mHasFixedSize && mIsAttached) {
+          ViewCompat.postOnAnimation(RecyclerView.this, mUpdateChildViewsRunnable);
+      } else {
+          mAdapterUpdateDuringMeasure = true;
+          requestLayout();
+      }
+  }
+
+final Runnable mUpdateChildViewsRunnable = new Runnable() {
+    @Override
+    public void run() {
+        if (!mFirstLayoutComplete || isLayoutRequested()) {
+            // a layout request will happen, we should not do layout here.
+            return;
+        }
+        if (!mIsAttached) {
+            requestLayout();
+            // if we are not attached yet, mark us as requiring layout and skip
+            return;
+        }
+        if (mLayoutSuppressed) {
+            mLayoutWasDefered = true;
+            return; //we'll process updates when ice age ends.
+        }
+        consumePendingUpdateOperations();
+    }
+};
+
+void consumePendingUpdateOperations() {
+      // if it is only an item change (no add-remove-notifyDataSetChanged) we can check if any
+      // of the visible items is affected and if not, just ignore the change.
+      if (mAdapterHelper.hasAnyUpdateTypes(AdapterHelper.UpdateOp.UPDATE) && !mAdapterHelper
+              .hasAnyUpdateTypes(AdapterHelper.UpdateOp.ADD | AdapterHelper.UpdateOp.REMOVE
+                      | AdapterHelper.UpdateOp.MOVE))
+          if (!mLayoutWasDefered) {
+              if (hasUpdatedView()) {
+                  dispatchLayout();
+              } else {
+                  // no need to layout, clean state
+                  mAdapterHelper.consumePostponedUpdates();
+              }
+          }
+
+      } else if (mAdapterHelper.hasPendingUpdates()) {
+          dispatchLayout();
+      }
+  }
+{% endhighlight %}
+
+可以看到如果设置了mHasFixedSize，而且mIsAttached为ture（完成过layout了）,就会执行mUpdateChildViewsRunnable任务，    
+最终会调用到dispatchLayout()。dispatchLayout()源码上文已经分析过，我们具体来看看里面的一个函数调用   
+dispatchLayoutStep2()方法里的mAdapterHelper.consumeUpdatesInOnePass()    
+
+{% highlight java %}
+void consumeUpdatesInOnePass() {
+       // we still consume postponed updates (if there is) in case there was a pre-process call
+       // w/o a matching consumePostponedUpdates.
+       consumePostponedUpdates();
+       final int count = mPendingUpdates.size();
+       for (int i = 0; i < count; i++) {
+           UpdateOp op = mPendingUpdates.get(i);
+           switch (op.cmd) {
+               case UpdateOp.ADD:
+                   mCallback.onDispatchSecondPass(op);
+                   mCallback.offsetPositionsForAdd(op.positionStart, op.itemCount);
+                   break;
+               case UpdateOp.REMOVE:
+                   mCallback.onDispatchSecondPass(op);
+                   mCallback.offsetPositionsForRemovingInvisible(op.positionStart, op.itemCount);
+                   break;
+               case UpdateOp.UPDATE:
+                   mCallback.onDispatchSecondPass(op);
+                   mCallback.markViewHoldersUpdated(op.positionStart, op.itemCount, op.payload);
+                   break;
+               case UpdateOp.MOVE:
+                   mCallback.onDispatchSecondPass(op);
+                   mCallback.offsetPositionsForMove(op.positionStart, op.itemCount);
+                   break;
+           }
+           if (mOnItemProcessedCallback != null) {
+               mOnItemProcessedCallback.run();
+           }
+       }
+       recycleUpdateOpsAndClearList(mPendingUpdates);
+       mExistingUpdateTypes = 0;
+   }
+{% endhighlight %}
+
+可以看到其中回调mCallback.offsetPositionsFor***。这里就是我们局部刷新的精华了，我们在这里会修改itemView的position    
+和flag。以remove为例子    
+{% highlight java %}
+void offsetPositionRecordsForRemove(int positionStart, int itemCount,
+          boolean applyToPreLayout) {
+      final int positionEnd = positionStart + itemCount;
+      final int childCount = mChildHelper.getUnfilteredChildCount();
+      for (int i = 0; i < childCount; i++) {
+          final ViewHolder holder = getChildViewHolderInt(mChildHelper.getUnfilteredChildAt(i));
+          if (holder != null && !holder.shouldIgnore()) {
+              if (holder.mPosition >= positionEnd) {
+                  if (sVerboseLoggingEnabled) {
+                      Log.d(TAG, "offsetPositionRecordsForRemove attached child " + i
+                              + " holder " + holder + " now at position "
+                              + (holder.mPosition - itemCount));
+                  }
+                  holder.offsetPosition(-itemCount, applyToPreLayout);
+                  mState.mStructureChanged = true;
+              } else if (holder.mPosition >= positionStart) {
+                  if (sVerboseLoggingEnabled) {
+                      Log.d(TAG, "offsetPositionRecordsForRemove attached child " + i
+                              + " holder " + holder + " now REMOVED");
+                  }
+                  holder.flagRemovedAndOffsetPosition(positionStart - 1, -itemCount,
+                          applyToPreLayout);
+                  mState.mStructureChanged = true;
+              }
+          }
+      }
+      mRecycler.offsetPositionRecordsForRemove(positionStart, itemCount, applyToPreLayout);
+      requestLayout();
+  }
+{% endhighlight %}
+
+通过图片可以更好理解这一过程    
+![](/assets/images/understand-recycler/v1.png)
+
+layoutManager的layoutChildren()流程为   
+![](/assets/images/understand-recycler/v2.png)      
+
+
+![](/assets/images/understand-recycler/v3.png)
+
+{% highlight java %}
+getViewForPosition() {
+  .....
+else if (!holder.isBound() || holder.needsUpdate() || holder.isInvalid()) {
+    if (sDebugAssertionsEnabled && holder.isRemoved()) {
+        throw new IllegalStateException("Removed holder should be bound and it should"
+                + " come here only in pre-layout. Holder: " + holder
+                + exceptionLabel());
+    }
+    final int offsetPosition = mAdapterHelper.findPositionOffset(position);
+    bound = tryBindViewHolderByDeadline(holder, offsetPosition, position, deadlineNs);
+}
+}
+{% endhighlight %}
+
+可以看到flag.Update或者flag.Invalidate为ture，或者flag.Bound为false（view未完成onBindView过）。     
+只有这三种情况下，才会去执行bindview，这样看来RV的局部刷新效率确实很高，只用执行少量的bindview
 
 ## 与AdapterView比较
 
