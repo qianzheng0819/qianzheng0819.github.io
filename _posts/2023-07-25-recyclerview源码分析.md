@@ -16,21 +16,21 @@ RecyclerView官网给出的定义是`A flexible view for providing a limited win
 
 RecyclerView的职责就是将Datas中的数据以一定的规则展示在它的上面，但说破天RecyclerView只是一个ViewGroup，它只认识View，不清楚Data数据的具体结构，所以两个陌生人之间想构建通话，我们很容易想到`适配器模式`,因此，RecyclerView需要一个Adapter来与Datas进行交流：
 
-![](/pic/understand-recycler/o_1av9ij8ua17en59k1ahg13d1l7c9.png)
+![](/assets/images/understand-recycler/o_1av9ij8ua17en59k1ahg13d1l7c9.png)
 
 如上如所示，RecyclerView表示只会和ViewHolder进行接触，而Adapter的工作就是将Data转换为RecyclerView认识的ViewHolder，因此RecyclerView就间接地认识了Datas。
 
 事情虽然进展愉快，但RecyclerView是个很懒惰的人，尽管Adapter已经将Datas转换为RecyclerView所熟知的View，但RecyclerView并不想自己管理些子View，因此，它雇佣了一个叫做LayoutManager的大祭司来帮其完成布局，现在，图示变成下面这样：
 
-![/pic/understand-recycler/o_1av9iv5731k3422htsd14uess1j.png](/pic/understand-recycler/o_1av9iv5731k3422htsd14uess1j.png)
+![/assets/images/understand-recycler/o_1av9iv5731k3422htsd14uess1j.png](/assets/images/understand-recycler/o_1av9iv5731k3422htsd14uess1j.png)
 
 如上图所示，LayoutManager协助RecyclerView来完成布局。但LayoutManager这个大祭司也有弱点，就是它只知道如何将一个一个的View布局在RecyclerView上，但它并不懂得如何管理这些View，如果大祭司肆无忌惮的玩弄View的话肯定会出事情，所以，必须有个管理View的护法，它就是Recycler，LayoutManager在需要View的时候回向护法进行索取，当LayoutManager不需要View(试图滑出)的时候，就直接将废弃的View丢给Recycler，图示如下：
 
-![](/pic/understand-recycler/o_1av9iujp712ctgik1slp1c7e1cg0e.png)
+![](/assets/images/understand-recycler/o_1av9iujp712ctgik1slp1c7e1cg0e.png)
 
 到了这里，有负责翻译数据的Adapter，有负责布局的LayoutManager，有负责管理View的Recycler，一切都很完美，但RecyclerView乃何等神也，它下令说当子View变动的时候姿态要优雅(动画)，所以用雇佣了一个舞者ItemAnimator，因此，舞者也进入了这个图示:
 
-![](/pic/understand-recycler/o_1av9ji0c01s471j1c5t27vrvcge.png)
+![](/assets/images/understand-recycler/o_1av9ji0c01s471j1c5t27vrvcge.png)
 
 如上，我们就是从宏观层面来对RecylerView有个大致的了解，可以看到，RecyclerView作为一个View，它只负责接受用户的各种讯息，然后将信息各司其职的分发出去。接下来我们将深入源码，看看RecyclerView都是怎么来操作各个组件工作的。
 
@@ -39,7 +39,7 @@ RecyclerView的职责就是将Datas中的数据以一定的规则展示在它的
 
 整个RecyclerView还是相当复杂的，我画了一个与RecyclerView相关类的脑图：
 
-![](/pic/understand-recycler/o_1avejfume5og1i5s17qn11e474c9.png)
+![](/assets/images/understand-recycler/o_1avejfume5og1i5s17qn11e474c9.png)
 
 可见RecyclerView涉及的类相当多，所以看代码的时候很容易迷失。因此我们需要抽丝剥茧，按照主线来进行分析。
 
@@ -532,7 +532,7 @@ View的回收并不像View的创建那么复杂，这里只涉及了两层缓存
 
 谈到RecyclerView，总避免不了与它的前辈AdapterView家族进行一撕，这里我整理了一下RecylerView与AdapterView的各自特点：
 
-![](/pic/understand-recycler/o_1av9k9g98p5d1s6u14n91m3n14ue9.png)
+![](/assets/images/understand-recycler/o_1av9k9g98p5d1s6u14n91m3n14ue9.png)
 
 前面四点两位都提供了各自的实现，但也各有各自的特点：
 
@@ -648,7 +648,7 @@ RecyclerView也不是万能的，它的灵活性也是有一定限制的，比�
 
 RecyclerView也应该算作一个明星控件了，自从其诞生开始就备受欢迎，仔细的学习也能让我们在工作中更容易的、更恰当的使用。本文也只是分析了RecyclerView的一部分，关于动画、滑动、嵌套滑动等等还需要大家自行去研究。
 
-![](/pic/understand-recycler/o_1avel5oho3vhmvmtg1o0v1e8a9.gif)
+![](/assets/images/understand-recycler/o_1avel5oho3vhmvmtg1o0v1e8a9.gif)
 
 ## 参考
 [A First Glance at Android’s RecyclerView](http://www.grokkingandroid.com/first-glance-androids-recyclerview/){:rel="nofollow"}
