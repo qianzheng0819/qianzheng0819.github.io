@@ -1,3 +1,49 @@
 vv202176 3702228241 aaAA1357 初中三年级一班
 
-2309px---839.6dp  100dp--275px
+
+
+/*
+ * @lc app=leetcode.cn id=92 lang=java
+ *
+ * [92] 反转链表 II
+ */
+
+// @lc code=start
+/**
+ * Definition for singly-linked list.
+ * public class ListNode {
+ * int val;
+ * ListNode next;
+ * ListNode() {}
+ * ListNode(int val) { this.val = val; }
+ * ListNode(int val, ListNode next) { this.val = val; this.next = next; }
+ * }
+ */
+class Solution {
+    public ListNode reverseBetween(ListNode head, int left, int right) {
+        ListNode virtul = new ListNode();
+        virtul.next = head;
+
+        ListNode dummy = virtul;
+
+        for (int i = 0; i < left - 1; i++) {
+            dummy = dummy.next;
+        }
+
+        ListNode pre = null;
+        ListNode cur = dummy.next;
+        for (int i = 0; i < right - left + 1; i++) {
+            ListNode next = cur.next;
+            cur.next = pre;
+            pre = cur;
+            cur = next;
+        }
+
+        dummy.next.next = cur;
+        dummy.next = pre;
+
+        return virtul.next;
+
+    }
+}
+// @lc code=end
