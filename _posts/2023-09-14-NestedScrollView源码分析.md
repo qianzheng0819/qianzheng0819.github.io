@@ -22,10 +22,10 @@ description:
 
 {% highlight java %}
 public boolean onInterceptTouchEvent(MotionEvent ev) {
-        
+
 
     switch (action & MotionEvent.ACTION_MASK) {
-        
+
         case MotionEvent.ACTION_DOWN: {
             final int y = (int) ev.getY();
             if (!inChild((int) ev.getX(), y)) {
@@ -55,7 +55,7 @@ public boolean onInterceptTouchEvent(MotionEvent ev) {
             break;
         }
 
-           
+
         return mIsBeingDragged;
     }
 {% endhighlight %}
@@ -128,7 +128,7 @@ case MotionEvent.ACTION_MOVE: {
 
 所有的move事件最终都由子nsv消费。
 
-{% highligh java %}
+{% highlight java %}
 case MotionEvent.ACTION_MOVE:
     final int activePointerIndex = ev.findPointerIndex(mActivePointerId);
     if (activePointerIndex == -1) {
