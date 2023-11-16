@@ -9,7 +9,7 @@ description:
 
 NestScroll流程图
 ------------
-![p]({{ site.baseurl }}/assets/images/2023-pic/p2.jpg)
+![p]({{ site.baseurl }}/assets/images/2023-pic/p2.png)
 
 
 源码分析
