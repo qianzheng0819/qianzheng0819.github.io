@@ -3,7 +3,7 @@ layout: post
 title:  "Makefile Tutorial"
 date:   2017-12-21 14:10:00 +0800
 categories: 学习
-tags:   makefile
+tags:   其他
 description: 国外的tutorial真的很用心啊,再次告诉我 never never code via baidu!
 ---
 

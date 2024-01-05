@@ -3,7 +3,7 @@ layout: post
 title:  "etc/profile脚本源码分析"
 date:   2022-05-06 11:39:00 +0800
 categories: linux
-tags: linux shell
+tags: 其他
 description:
 ---
 

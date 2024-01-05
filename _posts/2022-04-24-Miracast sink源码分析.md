@@ -2,8 +2,8 @@
 layout: post
 title:  "Miracast sink源码解析"
 date:   2022-03-25 11:39:00 +0800
-categories: Miracast
-tags: Miracast
+categories: 音视频开发
+tags: 音视频开发
 description:
 ---
 
