@@ -6,7 +6,9 @@ tags:   fwk
 description:
 ---
 
-具体流程：
+具体流程   
+------------------------------
+
 1.点击事件传递给 Launcher：当用户点击 Launcher 中的图标，Launcher 会通过 Intent 请求启动相应的应用或 Activity。
 
 2.启动 Activity 和动画请求：
@@ -23,7 +25,7 @@ WMS 负责窗口的管理和动画控制。在检测到某个 Activity 需要通
 5.ActivityTaskManagerService 调用动画相关的 RemoteAnimationController
 ActivityTaskManagerService 是启动 Activity 的核心管理器。在启动 Activity 的过程中，如果发现存在远程动画，则会创建一个 RemoteAnimationController 来处理动画。这部分代码可以在 ActivityTaskManagerService.java 文件中找到。
 
-`WindowContainerTransaction.java`
+`ActivityTaskManagerService.java`
 ```java
 void applyAnimation(...) {
     if (mRemoteAnimationAdapter != null) {
