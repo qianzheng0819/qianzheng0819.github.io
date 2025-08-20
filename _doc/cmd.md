@@ -34,7 +34,13 @@
   设备重启后可能无法开机，按音量下 + 电源经 bootloader 模式，执行 fastboot erase userdata, fastboot erase metadata, fastboot erase misc ， fastboot reboot 重启设备
   执行正常 remount 过程
 
+
+# adb pull /sdcard/Pictures/screenrecorder
+  adb pull /sdcard/log
+  adb pull /data/local/traces
+  adb pull /system/media/zui_launcher_config.xml
+
+# TouchInteraction|AbsSwip|QuickstepTransitionManager|StateManager|Animator|ViewRootImpl
   
 # 7.23日前gpt续费
 
-# 7.16日晚上早走一小时
