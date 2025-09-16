@@ -39,8 +39,12 @@
   adb pull /sdcard/log
   adb pull /data/local/traces
   adb pull /system/media/zui_launcher_config.xml
+  adb shell am force-stop com.zui.launcher
 
 # TouchInteraction|AbsSwip|QuickstepTransitionManager|StateManager|Animator|ViewRootImpl
   
 # 7.23日前gpt续费
+
+# 66428
+  
 
