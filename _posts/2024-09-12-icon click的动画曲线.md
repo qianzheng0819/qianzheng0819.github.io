@@ -272,4 +272,5 @@ private void cancelAnimation() {
 所以这一段代码其实就是给 mChoreographer注册动画回调来获取应用的第一帧。
 
 第一帧获取后，就开始调用addAfterPrepareSurfacesRunnable中的回调，就是我们关键的
-`mRemoteAnimationAdapter.getRunner().onAnimationStart`方法。
+`mRemoteAnimationAdapter.getRunner().onAnimationStart`方法。4D2p8wpENSH-99m
+NSG6J-HTTK2-966U6-V519M
